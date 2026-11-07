@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The Shelf · Heltec V4</title>
+<style>
+:root{--ink:#241B2F;--ink-deep:#1B1424;--surface:#322542;--surface-hover:#3D2D53;--text:#F0E9E3;--muted:#B7ABBA;--accent:#F2B441;--accent-ink:#2A1D0E;--mint:#6FCF97;--coral:#E2725B;--divider:#4A3B5C;
+  --serif:Georgia,'Iowan Old Style',Charter,serif;--sans:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ink);color:var(--text);font-family:var(--sans);line-height:1.5}
+.wrap{max-width:620px;margin:0 auto;padding:calc(20px + env(safe-area-inset-top)) 16px 48px}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.mark{font-size:22px;color:var(--accent);letter-spacing:-2px}
+h1{font-family:var(--serif);font-weight:600;font-size:26px;margin:0}
+.sub{color:var(--muted);margin:0 0 18px;font-size:14px}
+.banner{background:var(--accent);color:var(--accent-ink);border-radius:14px;padding:12px 14px;font-weight:600;margin-bottom:16px;display:none}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:24px 2px 8px;font-weight:700}
+.card{background:var(--surface);border:1px solid var(--divider);border-radius:14px;overflow:hidden}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:11px 14px;font-size:14px}
+.kv+.kv{border-top:1px solid var(--divider)}
+.kv span:first-child{color:var(--muted)}
+.kv span:last-child{text-align:right;word-break:break-all}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+button,.btn{font:inherit;font-weight:600;font-size:14px;border-radius:999px;padding:9px 16px;border:1px solid var(--divider);background:var(--surface);color:var(--text);cursor:pointer;text-decoration:none;display:inline-block}
+button.pri,.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.bad{color:var(--coral)}
+.net{display:flex;justify-content:space-between;width:100%;border:0;border-radius:0;background:none;padding:11px 14px;text-align:left;font-weight:400}
+.net+.net{border-top:1px solid var(--divider)}
+.net:hover{background:var(--surface-hover)}
+.net span:last-child{color:var(--muted);font-size:13px}
+.field{display:flex;gap:8px}
+.field input{flex:1;font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--divider);border-radius:12px;padding:9px 12px}
+.tip{color:var(--muted);font-size:13px;margin:8px 2px 0}
+.msg{color:var(--mint);font-size:14px;margin-top:10px;min-height:1em}
+.empty{color:var(--muted);padding:16px;text-align:center;font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><span class="mark">&#9724;&#9723;</span><h1>The Shelf</h1></div>
+  <p class="sub">on a Heltec V4 &middot; board settings</p>
+  <div class="banner" id="setupBanner">Setup mode: pick your home Wi-Fi below so everyone in the house can use this Shelf.</div>
+
+  <a class="btn pri" href="/" id="openShelf">Open The Shelf &rarr;</a>
+
+  <h2>This board</h2>
+  <div class="card" id="info"><div class="empty">Loading&hellip;</div></div>
+
+  <h2>Wi-Fi</h2>
+  <div class="card"><div class="kv"><span>Connected to</span><span id="wNow">&mdash;</span></div></div>
+  <div class="btns"><button class="pri" onclick="scan()">Find networks</button><button class="bad" onclick="forget()">Forget Wi-Fi</button></div>
+  <div class="card" id="nets" style="display:none;margin-top:10px"></div>
+  <div class="msg" id="wMsg"></div>
+
+  <h2>Name on the network</h2>
+  <div class="field"><input id="host" autocapitalize="off" autocorrect="off" spellcheck="false"><button class="pri" onclick="saveHost()">Save</button></div>
+  <p class="tip">Open this Shelf at <b id="hostShow"></b>. Other Shelves see it in Messages under the name set there.</p>
+
+  <h2>Storage</h2>
+  <p class="tip" id="storeTip"></p>
+
+  <div class="btns" style="margin-top:24px"><button onclick="reboot()">Restart the board</button></div>
+  <p class="tip">Hold the board's PRG button for 6 seconds to forget the Wi-Fi and go back to setup mode.</p>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=b=>b>=1e9?(b/1e9).toFixed(1)+' GB':b>=1e6?(b/1e6).toFixed(1)+' MB':Math.round(b/1e3)+' KB';
+let I={};
+async function post(u,d){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d||{})});let j={};try{j=await r.json()}catch(e){}if(!r.ok)throw new Error(j.error||'Something went wrong');return j}
+async function load(){try{I=await fetch('/api/board/info').then(r=>r.json())}catch(e){return}
+  const up=I.uptime>86400?Math.floor(I.uptime/86400)+'d '+Math.floor(I.uptime%86400/3600)+'h':Math.floor(I.uptime/3600)+'h '+Math.floor(I.uptime%3600/60)+'m';
+  const rows=[['Board',I.board+(I.psram?' · '+Math.round(I.psram/1048576)+' MB PSRAM':'')],['Firmware','v'+I.fw],['Storage',I.storage+' · '+fmt(I.total)],['Free',fmt(I.total-I.used)],['Address',I.ip],['Name',I.host+'.local'],['Up for',up]];
+  $('#info').innerHTML=rows.map(r=>`<div class="kv"><span>${r[0]}</span><span>${esc(r[1])}</span></div>`).join('');
+  $('#wNow').textContent=I.ssid?`${I.ssid} (${I.rssi} dBm)`:(I.ap?'Not yet: setup hotspot '+I.apName:'—');
+  $('#setupBanner').style.display=I.ap&&!I.ssid?'block':'none';
+  $('#openShelf').style.display=I.ap&&!I.ssid?'none':'inline-block';
+  if(document.activeElement!==$('#host'))$('#host').value=I.host;
+  $('#hostShow').textContent='http://'+I.host+'.local';
+  $('#storeTip').innerHTML=I.storage==='microSD card'
+    ?'Files are on the microSD card in normal folders (Pictures, Music, Videos, Games, Programs, Books), so the card also works in a computer. The Shelf\'s own data is in the hidden <b>.shelf</b> folder.'
+    :'No microSD card was found, so files are kept in the board\'s own flash ('+fmt(I.total)+'). Wire up a microSD module (CS 4, MISO 6, SCK 47, MOSI 48) for far more room.'}
+async function scan(){const box=$('#nets');box.style.display='block';box.innerHTML='<div class="empty">Looking for networks…</div>';
+  for(let i=0;i<25;i++){let j;try{j=await fetch('/api/board/wifi/scan').then(r=>r.json())}catch(e){break}
+    if(!j.scanning){const seen={};const nets=j.nets.filter(n=>n.ssid&&!seen[n.ssid]&&(seen[n.ssid]=1)).sort((a,b)=>b.rssi-a.rssi);
+      box.innerHTML=nets.length?nets.map(n=>`<button class="net" data-s="${esc(n.ssid)}" data-l="${n.lock}"><span>${n.lock?'🔒 ':''}${esc(n.ssid)}</span><span>${n.rssi} dBm</span></button>`).join(''):'<div class="empty">No networks found.</div>';return}
+    await new Promise(r=>setTimeout(r,800))}box.innerHTML='<div class="empty">Scan failed. Try again.</div>'}
+$('#nets').addEventListener('click',async e=>{const b=e.target.closest('.net');if(!b)return;const ssid=b.dataset.s;let pass='';
+  if(b.dataset.l==='1'){pass=prompt('Password for '+ssid);if(pass===null)return}
+  try{await post('/api/board/wifi',{ssid,pass});$('#wMsg').innerHTML=`Joining <b>${esc(ssid)}</b>… The board is restarting. Put your phone back on <b>${esc(ssid)}</b>, then open <b>http://${esc(I.host)}.local</b> or the address on the board's screen.`}catch(err){$('#wMsg').textContent=err.message}});
+async function forget(){if(!confirm('Forget the Wi-Fi? The board restarts in setup mode ('+I.apName+').'))return;try{await post('/api/board/wifi/forget');$('#wMsg').textContent='Restarting in setup mode…'}catch(e){$('#wMsg').textContent=e.message}}
+async function saveHost(){try{const j=await post('/api/board/settings',{host:$('#host').value});$('#wMsg').textContent=j.restart?'Renamed. Restarting…':'Saved.'}catch(e){$('#wMsg').textContent=e.message}}
+async function reboot(){if(!confirm('Restart the board?'))return;await post('/api/board/reboot');$('#wMsg').textContent='Restarting… give it 15 seconds.'}
+load();setInterval(load,15000);
+</script>
+</body>
+</html>

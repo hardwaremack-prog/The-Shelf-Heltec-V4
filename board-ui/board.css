@@ -1,0 +1,16 @@
+/* The Shelf for Heltec V4: hide the parts that need The Shelf on a computer. */
+#powerToggleRow, #localhostOnlyToggleRow, #authIndicator, .power-toggle-group, #secureModeToggleRow, #openWriteToggleRow,
+#imagineBtn, #standardizeNamesBtn, #fetchArtBtn, #clearArtBtn, #exportListBtn, #removeDuplicatesBtn,
+.track-edit-tags, .portal-section.backup-section,
+[data-act="vnc"] { display: none !important; }
+
+.board-badge {
+  display: flex; align-items: center; gap: 10px; margin: 14px 4px 6px; padding: 10px 12px;
+  background: var(--surface); border: 1px solid var(--divider); border-radius: 12px;
+  color: var(--text); text-decoration: none; font-size: 13px; line-height: 1.3;
+}
+.board-badge:hover { background: var(--surface-hover); }
+.board-badge b { color: var(--accent); }
+.board-badge .chip { width: 26px; height: 26px; border-radius: 7px; flex: none; display: grid; place-items: center;
+  background: #2b4a7a; color: #dfe8f7; font-weight: 700; font-size: 11px; }
+.board-badge small { color: var(--text-muted); display: block; }
