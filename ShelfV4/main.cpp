@@ -15,6 +15,7 @@
 #include <Wire.h>
 #include <U8g2lib.h>
 #include <esp_heap_caps.h>
+#include <sys/time.h>
 
 // ------------------------------------------------------------ globals
 fs::FS* store = nullptr;
@@ -25,6 +26,10 @@ SemaphoreHandle_t fsLock;
 
 String hostName, apName, wifiSSID;
 static String wifiPass;
+// "Own Wi-Fi": the board runs its own network and The Shelf works on it (car, camping...).
+static bool hotspotMode = false;          // chosen in settings
+static bool firstSetup = false;           // nothing set up yet: setup page first
+static String ownSSID, ownPass;
 bool apActive = false, staOK = false;
 static bool mdnsOK = false, ntpStarted = false;
 static uint32_t apOffAt = 0;
@@ -54,16 +59,49 @@ static bool probeOLED() {
   return ok;
 }
 
+// The V4 powers its screen through a "Vext" switch: GPIO36 on the standard V4,
+// GPIO40 on the V4-R8 (whose GPIO33-37 belong to its PSRAM, so they're never touched
+// in the R8 build). Heltec's docs disagree on the switch's polarity, so try both.
+static bool tryVext(int pin, int level) { pinMode(pin, OUTPUT); digitalWrite(pin, level); delay(60); return probeOLED(); }
+
 static void powerOLED() {
-  pinMode(PIN_VEXT, OUTPUT); digitalWrite(PIN_VEXT, LOW); delay(60);
-  if (!probeOLED()) {          // V4-R8: Vext is on GPIO40
-    pinMode(PIN_VEXT, INPUT);
-    pinMode(PIN_VEXT_R8, OUTPUT); digitalWrite(PIN_VEXT_R8, LOW); delay(60);
-    probeOLED();
-  }
+#if CONFIG_SPIRAM_MODE_OCT
+  bool ok = tryVext(PIN_VEXT_R8, LOW) || tryVext(PIN_VEXT_R8, HIGH);
+#else
+  bool ok = tryVext(PIN_VEXT, LOW) || tryVext(PIN_VEXT, HIGH);
+  if (!ok) { pinMode(PIN_VEXT, INPUT); ok = tryVext(PIN_VEXT_R8, LOW) || tryVext(PIN_VEXT_R8, HIGH); }
+#endif
+  (void)ok;
   oledOK = true;
   oled.begin();
   oled.setContrast(200);
+}
+
+// ------------------------------------------------------------ battery
+// VBAT is read on GPIO1 through a 390k/100k divider (x4.9) while ADC_CTRL (GPIO37)
+// is held high. The R8 build doesn't touch GPIO37 (its PSRAM) and just reads GPIO1.
+static float battV = -1;
+static void readBattery() {
+#if !CONFIG_SPIRAM_MODE_OCT
+  pinMode(PIN_ADC_CTRL, OUTPUT); digitalWrite(PIN_ADC_CTRL, HIGH); delay(5);
+#endif
+  uint32_t mv = 0;
+  for (int i = 0; i < 8; i++) mv += analogReadMilliVolts(PIN_VBAT);
+#if !CONFIG_SPIRAM_MODE_OCT
+  digitalWrite(PIN_ADC_CTRL, LOW);
+#endif
+  float v = (mv / 8.0f) * 4.9f / 1000.0f;
+  battV = (battV < 0 || fabsf(v - battV) > 0.5f) ? v : battV * 0.7f + v * 0.3f;
+}
+// -1 = no battery (running on USB)
+static int batteryPercent() {
+  if (battV < 2.8f || battV > 4.45f) return -1;
+  static const float V[] = {4.20f, 4.10f, 4.00f, 3.90f, 3.80f, 3.70f, 3.60f, 3.50f, 3.40f, 3.30f};
+  static const int P[] = {100, 90, 80, 65, 50, 35, 20, 10, 5, 0};
+  if (battV >= V[0]) return 100;
+  for (int i = 1; i < 10; i++)
+    if (battV >= V[i]) return P[i] + (int)((battV - V[i]) / (V[i - 1] - V[i]) * (P[i - 1] - P[i]));
+  return 0;
 }
 
 static void oledMsg(const char* a, const char* b = "", const char* c = "", const char* d = "") {
@@ -86,20 +124,44 @@ static String fmtShort(uint64_t b) {
 static void drawStatus() {
   if (!oledOK || !screenOn) return;
   oled.clearBuffer();
+  // top bar: name, storage, battery
   oled.setFont(u8g2_font_helvB08_tf); oled.drawStr(0, 9, "THE SHELF");
-  oled.setFont(u8g2_font_5x7_tf); oled.drawStr(58, 9, "V4");
-  oled.drawStr(onSD ? 116 : 104, 9, onSD ? "SD" : "FLASH");
+  int x = oled.getStrWidth("THE SHELF") + 3;
+  oled.setFont(u8g2_font_5x7_tf); oled.drawStr(x, 9, "V4");
+  x += oled.getStrWidth("V4") + 4;
+  oled.drawStr(x, 9, onSD ? "SD" : "FLASH");
+  int pct = batteryPercent();
+  oled.setFont(u8g2_font_4x6_tf);
+  if (pct < 0) {
+    oled.drawStr(128 - oled.getStrWidth("USB"), 8, "USB");
+  } else {
+    String t = String(pct) + "%";
+    int tw = oled.getStrWidth(t.c_str());
+    oled.drawStr(128 - tw, 8, t.c_str());
+    int bx = 128 - tw - 16;                         // battery icon: 12x7 body + nub
+    oled.drawFrame(bx, 2, 12, 7);
+    oled.drawBox(bx + 12, 4, 2, 3);
+    oled.drawBox(bx + 1, 3, (pct * 10 + 50) / 100, 5);
+  }
   oled.drawHLine(0, 12, 128);
+
   oled.setFont(u8g2_font_6x10_tf);
+  String bottom;
   if (staOK) {
-    oled.drawStr(0, 24, WiFi.localIP().toString().c_str());
-    oled.drawStr(0, 35, (hostName + ".local").c_str());
+    oled.drawStr(0, 24, (hostName + ".local").c_str());
+    String l2 = onlineShelves > 0 ? String(onlineShelves) + (onlineShelves == 1 ? " Shelf nearby" : " Shelves nearby")
+                                  : String("Wi-Fi ") + WiFi.RSSI() + " dBm";
+    oled.drawStr(0, 35, l2.c_str());
+    bottom = "IP " + WiFi.localIP().toString();
   } else if (apActive) {
-    oled.drawStr(0, 24, ("Join " + apName).c_str());
-    oled.drawStr(0, 35, "pw theshelf > 4.1");
+    oled.drawStr(0, 24, ((firstSetup ? "Join " : "Wi-Fi ") + ownSSID).c_str());
+    String l2 = ownPass.length() >= 8 ? "Password: " + ownPass : String("Open network");
+    oled.drawStr(0, 35, l2.c_str());
+    bottom = (firstSetup ? "Setup " : "IP ") + WiFi.softAPIP().toString();
   } else {
     oled.drawStr(0, 24, "Connecting Wi-Fi...");
     oled.drawStr(0, 35, wifiSSID.c_str());
+    bottom = BOARD_NAME " v" FW_VERSION;
   }
   if (storeTotal) {
     int w = (int)((storeUsed * 76ULL) / storeTotal);
@@ -108,8 +170,6 @@ static void drawStatus() {
     oled.drawStr(82, 46, (fmtShort(storeTotal - storeUsed) + " free").c_str());
   }
   oled.setFont(u8g2_font_6x10_tf);
-  String bottom = staOK ? String("Wi-Fi ") + WiFi.RSSI() + "dBm" : String(BOARD_NAME " v" FW_VERSION);
-  if (staOK && onlineShelves > 0) bottom = String(onlineShelves) + (onlineShelves == 1 ? " Shelf nearby" : " Shelves nearby");
   oled.drawStr(0, 62, bottom.c_str());
   oled.sendBuffer();
 }
@@ -140,12 +200,21 @@ static void refreshStats() {
 }
 
 // ------------------------------------------------------------ Wi-Fi
+static void startMDNS() {
+  if (mdnsOK || !MDNS.begin(hostName.c_str())) return;
+  MDNS.addService("http", "tcp", 80);
+  MDNS.addService("http", "tcp", 8080);
+  MDNS.addServiceTxt("http", "tcp", "app", "the-shelf");
+  mdnsOK = true;
+}
 static void startAP() {
   if (apActive) return;
-  WiFi.mode(wifiSSID.length() ? WIFI_AP_STA : WIFI_AP);
-  WiFi.softAP(apName.c_str(), AP_PASS);
-  dns.start(53, "*", WiFi.softAPIP());
+  WiFi.mode((wifiSSID.length() && !hotspotMode) ? WIFI_AP_STA : WIFI_AP);
+  // channel 1, visible, up to 8 phones/laptops at once
+  WiFi.softAP(ownSSID.c_str(), ownPass.length() >= 8 ? ownPass.c_str() : nullptr, 1, 0, 8);
+  dns.start(53, "*", WiFi.softAPIP());   // any name typed on the board's Wi-Fi reaches The Shelf
   apActive = true;
+  startMDNS();
 }
 static void stopAP() {
   if (!apActive) return;
@@ -154,12 +223,7 @@ static void stopAP() {
 static void onJoined() {
   staOK = true;
   WiFi.setSleep(false);
-  if (!mdnsOK && MDNS.begin(hostName.c_str())) {
-    MDNS.addService("http", "tcp", 80);
-    MDNS.addService("http", "tcp", 8080);
-    MDNS.addServiceTxt("http", "tcp", "app", "the-shelf");
-    mdnsOK = true;
-  }
+  startMDNS();
   if (!ntpStarted) { configTime(0, 0, "pool.ntp.org", "time.google.com"); ntpStarted = true; }
 }
 static String sanitizeHost(String h) {
@@ -181,7 +245,10 @@ bool handleBoardApi(AsyncWebServerRequest* r, const String& url, WebRequestMetho
     String s = String("{\"board\":\"") + BOARD_NAME + "\",\"fw\":\"" FW_VERSION "\",\"storage\":\"" + (onSD ? "microSD card" : "board flash") +
       "\",\"total\":" + String((double)storeTotal, 0) + ",\"used\":" + String((double)storeUsed, 0) + ",\"host\":\"" + hostName +
       "\",\"ip\":\"" + currentIP() + "\",\"ssid\":\"" + jsonEsc(staOK ? WiFi.SSID() : String("")) + "\",\"rssi\":" + (staOK ? WiFi.RSSI() : 0) +
-      ",\"ap\":" + (apActive ? "true" : "false") + ",\"apName\":\"" + apName + "\",\"uptime\":" + (millis() / 1000) +
+      ",\"ap\":" + (apActive ? "true" : "false") + ",\"apName\":\"" + jsonEsc(ownSSID) + "\",\"hotspot\":" + (hotspotMode ? "true" : "false") +
+      ",\"setup\":" + (firstSetup ? "true" : "false") + ",\"homeSsid\":\"" + jsonEsc(wifiSSID) + "\",\"apOpen\":" + (ownPass.length() >= 8 ? "false" : "true") + ",\"apPass\":\"" + jsonEsc(ownPass) + "\"" +
+      ",\"clients\":" + (apActive ? WiFi.softAPgetStationNum() : 0) + ",\"timeSet\":" + (time(nullptr) > 1700000000 ? "true" : "false") +
+      ",\"uptime\":" + (millis() / 1000) +
       ",\"heap\":" + ESP.getFreeHeap() + ",\"psram\":" + ESP.getPsramSize() + "}";
     sendJson(r, 200, s); return true;
   }
@@ -206,10 +273,31 @@ bool handleBoardApi(AsyncWebServerRequest* r, const String& url, WebRequestMetho
   if (url == "/api/board/wifi") {
     String ssid = b["ssid"] | "", pass = b["pass"] | "";
     if (!ssid.length()) { sendErr(r, 400, "Pick a network"); return true; }
-    prefs.putString("ssid", ssid); prefs.putString("pass", pass);
+    prefs.putString("ssid", ssid); prefs.putString("pass", pass); prefs.putString("mode", "home");
     sendJson(r, 200, "{\"ok\":true}"); rebootSoon = true; return true;
   }
-  if (url == "/api/board/wifi/forget") { prefs.remove("ssid"); prefs.remove("pass"); sendJson(r, 200, "{\"ok\":true}"); rebootSoon = true; return true; }
+  if (url == "/api/board/wifi/forget") { prefs.remove("ssid"); prefs.remove("pass"); prefs.remove("mode"); sendJson(r, 200, "{\"ok\":true}"); rebootSoon = true; return true; }
+  if (url == "/api/board/hotspot") {          // run on the board's own Wi-Fi
+    String ss = b["ssid"] | ""; ss.trim();
+    String pw = b["pass"] | "";
+    if (ss.length() < 1 || ss.length() > 32) { sendErr(r, 400, "The network name needs 1 to 32 characters."); return true; }
+    if (pw.length() && (pw.length() < 8 || pw.length() > 63)) { sendErr(r, 400, "The password needs 8 to 63 characters (or leave it blank for an open network)."); return true; }
+    prefs.putString("apssid", ss); prefs.putString("appass", pw); prefs.putString("mode", "hotspot");
+    sendJson(r, 200, "{\"ok\":true}"); rebootSoon = true; return true;
+  }
+  if (url == "/api/board/home") {             // back to joining the home Wi-Fi
+    if (!wifiSSID.length()) { sendErr(r, 400, "Pick your home Wi-Fi first with Find networks."); return true; }
+    prefs.putString("mode", "home");
+    sendJson(r, 200, "{\"ok\":true}"); rebootSoon = true; return true;
+  }
+  if (url == "/api/board/time") {             // no internet on its own Wi-Fi: take the time from the browser
+    uint64_t ms = b["ms"] | 0ULL;
+    if (time(nullptr) < 1700000000 && ms > 1700000000000ULL) {
+      struct timeval tv = {(time_t)(ms / 1000), (suseconds_t)((ms % 1000) * 1000)};
+      settimeofday(&tv, nullptr);
+    }
+    sendJson(r, 200, String("{\"ok\":true,\"timeSet\":") + (time(nullptr) > 1700000000 ? "true" : "false") + "}"); return true;
+  }
   if (url == "/api/board/settings") {
     String h = sanitizeHost(b["host"] | "");
     if (h.length() < 2) { sendErr(r, 400, "The name needs letters or numbers"); return true; }
@@ -280,7 +368,7 @@ class ShelfHandler : public AsyncWebHandler {
     if (b && b->tooBig) { sendErr(r, 413, "That's too big for the board to take in one go."); cleanup(r); return; }
 
     if (url == "/" || url == "/index.html") {
-      if (apActive && !staOK) { r->redirect("/board/"); return; }
+      if (firstSetup) { r->redirect("/board/"); return; }
       if (r->client()) recordVisitor(r->client()->remoteIP().toString());
       sendWww(r, "/index.html", "text/html; charset=utf-8");
       return;
@@ -303,8 +391,17 @@ static void setupServer(AsyncWebServer& s) {
   s.serveStatic("/", LittleFS, "/").setDefaultFile("index.html").setCacheControl("max-age=600");
   s.onNotFound([](AsyncWebServerRequest* r) {
     if (apActive) {
-      String host = r->host(), ip = WiFi.softAPIP().toString();
-      if (host != ip && host != hostName + ".local") return r->redirect("http://" + ip + "/board/");
+      String host = r->host(), ip = WiFi.softAPIP().toString(), u = r->url();
+      if (!firstSetup) {
+        // Own Wi-Fi: tell phones the network is fine so they stay on it without a
+        // "log in to network" sheet. (There's no internet; The Shelf is the point.)
+        if (u == "/hotspot-detect.html" || u.startsWith("/library/test/success"))
+          return r->send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
+        if (u == "/generate_204" || u == "/gen_204") return r->send(204);
+        if (u == "/connecttest.txt") return r->send(200, "text/plain", "Microsoft Connect Test");
+        if (u == "/ncsi.txt") return r->send(200, "text/plain", "Microsoft NCSI");
+        if (host != ip && host != hostName + ".local") return r->redirect("http://" + ip + "/");
+      } else if (host != ip && host != hostName + ".local") return r->redirect("http://" + ip + "/board/");
     }
     r->send(404, "text/plain", "Not found");
   });
@@ -352,6 +449,10 @@ void setup() {
   hostName = prefs.getString("host", String("shelf-v4-") + tag);
   wifiSSID = prefs.getString("ssid", "");
   wifiPass = prefs.getString("pass", "");
+  hotspotMode = prefs.getString("mode", "") == "hotspot";
+  ownSSID = prefs.getString("apssid", apName);
+  ownPass = prefs.getString("appass", AP_PASS);
+  firstSetup = !hotspotMode && !wifiSSID.length();
 
   if (!LittleFS.begin(false, "/www", 10, "www")) oledMsg("Web app missing", "Re-flash from the", "installer page");
   setupStorage();
@@ -359,7 +460,7 @@ void setup() {
 
   WiFi.persistent(false);
   WiFi.setHostname(hostName.c_str());
-  if (wifiSSID.length()) {
+  if (wifiSSID.length() && !hotspotMode) {
     WiFi.mode(WIFI_STA); WiFi.setAutoReconnect(true);
     WiFi.begin(wifiSSID.c_str(), wifiPass.c_str());
     uint32_t t0 = millis();
@@ -369,7 +470,7 @@ void setup() {
     }
     if (WiFi.status() == WL_CONNECTED) onJoined();
   }
-  if (!staOK) startAP();
+  if (!staOK) startAP();   // own Wi-Fi, first setup, or home Wi-Fi not found (keeps looking for it)
 
   setupServer(server80);
   setupServer(server8080);
@@ -385,7 +486,7 @@ void loop() {
   if (apActive) dns.processNextRequest();
   if (!staOK && WiFi.status() == WL_CONNECTED) { onJoined(); apOffAt = now + 90000; }
   if (staOK && WiFi.status() != WL_CONNECTED) staOK = false;
-  if (apActive && apOffAt && now > apOffAt && staOK) { stopAP(); apOffAt = 0; }
+  if (apActive && apOffAt && now > apOffAt && staOK && !hotspotMode) { stopAP(); apOffAt = 0; }
   if (rebootSoon) { rebootSoon = false; rebootAt = now + 1500; }
   if (rebootAt && now > rebootAt) { oledMsg("Restarting..."); delay(200); ESP.restart(); }
 
@@ -396,6 +497,8 @@ void loop() {
 
   if (screenOn && now - lastActivity > 300000 && !btnDown) { screenOn = false; oled.setPowerSave(1); }
   static uint32_t lastDraw = 0;
+  static uint32_t lastBatt = 0;
+  if (lastBatt == 0 || now - lastBatt > 10000) { readBattery(); lastBatt = now; }
   if (!btnDown && now - lastDraw > 1000) { onlineShelves = onlinePeerCount(); drawStatus(); lastDraw = now; }
   delay(5);
 }

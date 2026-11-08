@@ -6,10 +6,12 @@
   function fmt(b) { return b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.round(b / 1e3) + ' KB'; }
   async function decorate() {
     const info = await boardInfo();
+    // On its own Wi-Fi the board has no internet clock: lend it this device's time.
+    if (info && !info.timeSet) fetch('/api/board/time', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ms: Date.now() }) }).catch(() => {});
     const p = document.querySelector('.brand-text p');
     if (p) p.textContent = 'running on a Heltec V4';
     const net = document.getElementById('networkUrl');
-    if (net && info) net.textContent = info.host + '.local';
+    if (net && info) net.textContent = (info.hotspot || (info.ap && !info.ssid)) ? info.ip : info.host + '.local';
     const scroll = document.querySelector('.sidebar-scroll');
     if (scroll && !document.querySelector('.board-badge')) {
       const a = document.createElement('a');

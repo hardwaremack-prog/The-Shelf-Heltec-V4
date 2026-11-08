@@ -53,6 +53,21 @@ Your shelves are normal folders at the top of the card: `Pictures`, `Music`, `Vi
 3. The setup page opens (or go to `http://192.168.4.1`). Tap **Find networks**, pick your Wi-Fi and enter its password.
 4. Back on your home Wi-Fi, open the address on the screen, or **`http://shelf-v4-xxxx.local`**.
 
+### Its own Wi-Fi (car, camping, anywhere)
+
+On the settings page, choose **Use its own Wi-Fi**, then pick a network name and password. The board then runs its own network instead of joining yours, and The Shelf works fully on it. Join that network on your phone or laptop and open `http://192.168.4.1` (any address you type gets there). There's no internet on that network, so phones are told it's fine and stay connected without a sign-in pop-up. The board borrows the time from the first browser that opens it, so notes and files get the right dates. Messages with other Shelves needs your home Wi-Fi.
+
+If the board is set to join your home Wi-Fi but can't find it at power-up, it starts its own Wi-Fi anyway and keeps looking for home.
+
+### The screen
+
+- **Top bar:** THE SHELF V4, SD or FLASH, and a **battery meter** (or `USB` when no battery is plugged in)
+- **Middle:** the board's name, then nearby Shelves or Wi-Fi strength (on its own Wi-Fi: the network name and password)
+- **Storage bar** with free space
+- **Bottom line:** the **IP address** to open
+
+The screen sleeps after 5 minutes; a short press of **PRG** wakes it.
+
 The **Heltec V4** card at the bottom of The Shelf's sidebar opens the board's settings page (`/board/`). There you can change Wi-Fi, rename the board, see storage, and restart it. Hold **PRG** for 6 seconds to forget the Wi-Fi.
 
 ## Messages between Shelves

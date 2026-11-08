@@ -34,6 +34,13 @@ button.bad{color:var(--coral)}
 .tip{color:var(--muted);font-size:13px;margin:8px 2px 0}
 .msg{color:var(--mint);font-size:14px;margin-top:10px;min-height:1em}
 .empty{color:var(--muted);padding:16px;text-align:center;font-size:14px}
+.seg{display:flex;background:var(--ink-deep);border:1px solid var(--divider);border-radius:999px;padding:3px;gap:3px}
+.seg button{flex:1;border:0;border-radius:999px;background:none;color:var(--muted);padding:9px 10px}
+.seg button.on{background:var(--surface-hover);color:var(--text)}
+.panel{margin-top:12px}
+.stack{display:flex;flex-direction:column;gap:8px}
+.stack input{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--divider);border-radius:12px;padding:9px 12px}
+label.l{font-size:13px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -48,9 +55,29 @@ button.bad{color:var(--coral)}
   <div class="card" id="info"><div class="empty">Loading&hellip;</div></div>
 
   <h2>Wi-Fi</h2>
-  <div class="card"><div class="kv"><span>Connected to</span><span id="wNow">&mdash;</span></div></div>
-  <div class="btns"><button class="pri" onclick="scan()">Find networks</button><button class="bad" onclick="forget()">Forget Wi-Fi</button></div>
-  <div class="card" id="nets" style="display:none;margin-top:10px"></div>
+  <div class="card"><div class="kv"><span>Right now</span><span id="wNow">&mdash;</span></div></div>
+  <div class="seg" style="margin-top:12px">
+    <button id="tabHome" onclick="showTab('home')">Join my Wi-Fi</button>
+    <button id="tabOwn" onclick="showTab('own')">Use its own Wi-Fi</button>
+  </div>
+
+  <div class="panel" id="pHome">
+    <p class="tip">The board joins your home network, and everyone in the house opens it from there. It also finds your other Shelves.</p>
+    <div class="btns"><button class="pri" onclick="scan()">Find networks</button><button id="backHome" onclick="useHome()" style="display:none">Switch back to <span id="homeName"></span></button><button class="bad" onclick="forget()">Forget Wi-Fi</button></div>
+    <div class="card" id="nets" style="display:none;margin-top:10px"></div>
+  </div>
+
+  <div class="panel" id="pOwn" style="display:none">
+    <p class="tip">The board makes its own Wi-Fi network, so The Shelf works anywhere: in the car, at camp, or where there's no Wi-Fi. Join it, then open <b>http://192.168.4.1</b> (or type any address). It has no internet; that's fine for The Shelf.</p>
+    <div style="height:6px"></div>
+    <div class="stack">
+      <label class="l" for="apSsid">Network name</label>
+      <input id="apSsid" maxlength="32" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <label class="l" for="apPass">Password (8+ characters, or blank for an open network)</label>
+      <input id="apPass" maxlength="63" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="leave blank for an open network">
+    </div>
+    <div class="btns"><button class="pri" onclick="useOwn()">Use its own Wi-Fi</button></div>
+  </div>
   <div class="msg" id="wMsg"></div>
 
   <h2>Name on the network</h2>
@@ -61,21 +88,35 @@ button.bad{color:var(--coral)}
   <p class="tip" id="storeTip"></p>
 
   <div class="btns" style="margin-top:24px"><button onclick="reboot()">Restart the board</button></div>
-  <p class="tip">Hold the board's PRG button for 6 seconds to forget the Wi-Fi and go back to setup mode.</p>
+  <p class="tip">Hold the board's PRG button for 6 seconds to forget all Wi-Fi settings and go back to setup mode.</p>
 </div>
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=b=>b>=1e9?(b/1e9).toFixed(1)+' GB':b>=1e6?(b/1e6).toFixed(1)+' MB':Math.round(b/1e3)+' KB';
-let I={};
+let I={},tabPicked=false,pwFilled=false;
+function showTab(t){tabPicked=true;$('#pHome').style.display=t==='home'?'block':'none';$('#pOwn').style.display=t==='own'?'block':'none';
+  $('#tabHome').classList.toggle('on',t==='home');$('#tabOwn').classList.toggle('on',t==='own')}
+async function useOwn(){const ssid=$('#apSsid').value.trim(),pass=$('#apPass').value;
+  if(pass&&pass.length<8){$('#wMsg').textContent='The password needs at least 8 characters, or leave it blank.';return}
+  if(!pass&&!confirm('No password means anyone nearby can join and see The Shelf. Use an open network?'))return;
+  try{await post('/api/board/hotspot',{ssid,pass});$('#wMsg').innerHTML=`Switching to its own Wi-Fi… Join <b>${esc(ssid)}</b>${pass?' with your password':''}, then open <b>http://192.168.4.1</b>.`}catch(e){$('#wMsg').textContent=e.message}}
+async function useHome(){try{await post('/api/board/home');$('#wMsg').textContent='Switching back to '+I.homeSsid+'… Rejoin it on your phone, then open http://'+I.host+'.local.'}catch(e){$('#wMsg').textContent=e.message}}
 async function post(u,d){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d||{})});let j={};try{j=await r.json()}catch(e){}if(!r.ok)throw new Error(j.error||'Something went wrong');return j}
 async function load(){try{I=await fetch('/api/board/info').then(r=>r.json())}catch(e){return}
   const up=I.uptime>86400?Math.floor(I.uptime/86400)+'d '+Math.floor(I.uptime%86400/3600)+'h':Math.floor(I.uptime/3600)+'h '+Math.floor(I.uptime%3600/60)+'m';
   const rows=[['Board',I.board+(I.psram?' · '+Math.round(I.psram/1048576)+' MB PSRAM':'')],['Firmware','v'+I.fw],['Storage',I.storage+' · '+fmt(I.total)],['Free',fmt(I.total-I.used)],['Address',I.ip],['Name',I.host+'.local'],['Up for',up]];
   $('#info').innerHTML=rows.map(r=>`<div class="kv"><span>${r[0]}</span><span>${esc(r[1])}</span></div>`).join('');
-  $('#wNow').textContent=I.ssid?`${I.ssid} (${I.rssi} dBm)`:(I.ap?'Not yet: setup hotspot '+I.apName:'—');
-  $('#setupBanner').style.display=I.ap&&!I.ssid?'block':'none';
-  $('#openShelf').style.display=I.ap&&!I.ssid?'none':'inline-block';
+  $('#wNow').textContent=I.ssid?`On ${I.ssid} (${I.rssi} dBm)`
+    :I.hotspot?`Own Wi-Fi "${I.apName}" · ${I.clients} connected`
+    :I.setup?`Setup hotspot "${I.apName}"`
+    :I.ap?`Couldn't find ${I.homeSsid}, so it's on its own Wi-Fi "${I.apName}"`:'—';
+  $('#setupBanner').style.display=I.setup?'block':'none';
+  $('#openShelf').style.display=I.setup?'none':'inline-block';
+  if(!tabPicked)showTab(I.hotspot?'own':'home');
+  if(!pwFilled){$('#apSsid').value=I.apName;$('#apPass').value=I.apPass||'';pwFilled=true}
+  $('#backHome').style.display=I.hotspot&&I.homeSsid?'inline-block':'none';$('#homeName').textContent=I.homeSsid;
+  if(!I.timeSet)post('/api/board/time',{ms:Date.now()}).catch(()=>{});
   if(document.activeElement!==$('#host'))$('#host').value=I.host;
   $('#hostShow').textContent='http://'+I.host+'.local';
   $('#storeTip').innerHTML=I.storage==='microSD card'

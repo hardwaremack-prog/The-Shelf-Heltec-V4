@@ -3,7 +3,7 @@
 // Same microSD wiring as Heltec Shelf Lite, so a board wired for that works as-is.
 #pragma once
 
-#define FW_VERSION "1.0.0"
+#define FW_VERSION "1.1.0"
 #define BOARD_NAME "Heltec V4"
 
 // --- Built in to the board ---
@@ -14,6 +14,8 @@
 #define PIN_BUTTON 0      // PRG button
 #define PIN_VEXT   36     // LOW = OLED/Ve power on (V4 / ESP32-S3R2)
 #define PIN_VEXT_R8 40    // Vext moved here on the V4-R8; GPIO36 belongs to its PSRAM
+#define PIN_VBAT   1      // battery voltage (390k/100k divider)
+#define PIN_ADC_CTRL 37   // HIGH = connect the divider (standard V4 only)
 
 // --- microSD module (its own SPI bus, clear of the LoRa radio on 8-14,
 //     the high-power LoRa amplifier pins 2/5/7 and the R8's PSRAM on 33-37) ---
