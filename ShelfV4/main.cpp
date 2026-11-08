@@ -16,6 +16,8 @@
 #include <U8g2lib.h>
 #include <esp_heap_caps.h>
 #include <sys/time.h>
+#include <esp_netif.h>
+#include <dhcpserver/dhcpserver.h>
 
 // ------------------------------------------------------------ globals
 fs::FS* store = nullptr;
@@ -234,7 +236,22 @@ static void startAP() {
   WiFi.mode((wifiSSID.length() && !hotspotMode) ? WIFI_AP_STA : WIFI_AP);
   // channel 1, visible, up to 8 phones/laptops at once
   WiFi.softAP(ownSSID.c_str(), ownPass.length() >= 8 ? ownPass.c_str() : nullptr, 1, 0, 8);
-  dns.start(53, "*", WiFi.softAPIP());   // any name typed on the board's Wi-Fi reaches The Shelf
+  if (firstSetup) {
+    // First setup: act as a captive portal so the phone pops up the setup page.
+    dns.start(53, "*", WiFi.softAPIP());
+  } else {
+    // Own Wi-Fi: hand out NO gateway and NO DNS server. Phones then mark the network
+    // "No Internet Connection", stay joined for The Shelf (192.168.4.1 / name.local),
+    // and keep using cellular data for everything else - texts, iMessage, apps.
+    esp_netif_t* ap = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+    if (ap) {
+      esp_netif_dhcps_stop(ap);
+      dhcps_offer_t none = 0;
+      esp_netif_dhcps_option(ap, ESP_NETIF_OP_SET, ESP_NETIF_ROUTER_SOLICITATION_ADDRESS, &none, sizeof(none));
+      esp_netif_dhcps_option(ap, ESP_NETIF_OP_SET, ESP_NETIF_DOMAIN_NAME_SERVER, &none, sizeof(none));
+      esp_netif_dhcps_start(ap);
+    }
+  }
   apActive = true;
   startMDNS();
 }
@@ -414,16 +431,9 @@ static void setupServer(AsyncWebServer& s) {
   s.onNotFound([](AsyncWebServerRequest* r) {
     if (apActive) {
       String host = r->host(), ip = WiFi.softAPIP().toString(), u = r->url();
-      if (!firstSetup) {
-        // Own Wi-Fi: tell phones the network is fine so they stay on it without a
-        // "log in to network" sheet. (There's no internet; The Shelf is the point.)
-        if (u == "/hotspot-detect.html" || u.startsWith("/library/test/success"))
-          return r->send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
-        if (u == "/generate_204" || u == "/gen_204") return r->send(204);
-        if (u == "/connecttest.txt") return r->send(200, "text/plain", "Microsoft Connect Test");
-        if (u == "/ncsi.txt") return r->send(200, "text/plain", "Microsoft NCSI");
-        if (host != ip && host != hostName + ".local") return r->redirect("http://" + ip + "/");
-      } else if (host != ip && host != hostName + ".local") return r->redirect("http://" + ip + "/board/");
+      // Own Wi-Fi never claims to have internet (no gateway, no DNS), so phones keep
+      // their cellular data. Only first setup redirects stray requests to the setup page.
+      if (firstSetup && host != ip && host != hostName + ".local") return r->redirect("http://" + ip + "/board/");
     }
     r->send(404, "text/plain", "Not found");
   });

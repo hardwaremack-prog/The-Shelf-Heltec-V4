@@ -97,7 +97,9 @@ The request goes out again after 2 minutes in case nobody heard the first one.
 
 ### Its own Wi-Fi (car, camping, anywhere)
 
-On the settings page, choose **Use its own Wi-Fi**, then pick a network name and password. The board then runs its own network instead of joining yours, and The Shelf works fully on it. Join that network on your phone or laptop and open `http://192.168.4.1` (any address you type gets there). There's no internet on that network, so phones are told it's fine and stay connected without a sign-in pop-up. The board borrows the time from the first browser that opens it, so notes and files get the right dates. Messages with other Shelves needs your home Wi-Fi.
+On the settings page, choose **Use its own Wi-Fi**, then pick a network name and password. The board then runs its own network instead of joining yours, and The Shelf works fully on it. Join that network on your phone or laptop and open `http://192.168.4.1` (or `http://shelf-v4-xxxx.local`).
+
+**Your phone keeps its cellular data.** The board's own network has no internet, and it says so. It hands out no gateway or DNS server, so an iPhone shows **"No Internet Connection"** under the network name. It stays joined for The Shelf (everything on 192.168.4.x) and sends everything else over cellular, so texts, iMessage, calls and apps keep working while you're connected. Android phones do the same. The only time the board acts as a sign-in page is first-time setup, for the minute or two it takes to pick your Wi-Fi. The board borrows the time from the first browser that opens it, so notes and files get the right dates. Messages with other Shelves needs your home Wi-Fi.
 
 If the board is set to join your home Wi-Fi but can't find it at power-up, it starts its own Wi-Fi anyway and keeps looking for home.
 
