@@ -37,7 +37,7 @@ The buttons for those computer-only features are hidden on the board, and the AI
 | GND | GND |
 | CS | GPIO 4 |
 | MISO | GPIO 6 |
-| SCK | GPIO 47 |
+| CLK (SCK) | GPIO 47 |
 | MOSI | GPIO 48 |
 
 With no card, The Shelf keeps files in about 10 MB of the board's own flash. The screen shows **SD** or **FLASH** in the corner.
