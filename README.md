@@ -58,7 +58,7 @@ Your shelves are normal folders at the top of the card: `Pictures`, `Music`, `Vi
 A **900MHz Coms** tab in The Shelf's Tools lets Shelf boards text each other over the V4's LoRa radio, with no Wi-Fi or internet between them.
 
 - **On/off switch.** When it's on, the tab shows the message log and a box to send to everyone on the mesh (180 characters per message).
-- **Every board is a relay.** Anything new a board hears, it re-sends once after a short random wait, up to 3 hops, so messages reach boards beyond direct range. Message IDs are remembered so nothing loops, and boards listen before talking.
+- **Every board is a relay.** Anything new a board hears, it re-sends once after a short random wait, so messages hop board to board as far as the mesh reaches (no hop limit). Message IDs are remembered so nothing loops, and boards listen before talking.
 - **Catch-up.** When a board turns Coms on, it asks its neighbors for the last 12 hours. One of them replays what it's missing (up to 60 messages), marked "caught up", with their original times.
 - **Display.** The tab shows who's in range with signal strength, plus counts of heard, relayed and caught-up messages. The OLED shows an antenna icon while Coms is on, and new messages for 15 seconds.
 - **Settings.** You can set your name on the mesh and the transmit power: Low ~11 dBm, Normal ~20 dBm (default), or High ~27 dBm, through the V4's front-end amplifier.

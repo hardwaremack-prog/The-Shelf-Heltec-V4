@@ -30,7 +30,9 @@ static const uint8_t MAGIC0 = 'S', MAGIC1 = '9';
 static const uint8_t T_TEXT = 1, T_SYNC_REQ = 2, T_REPLAY = 3;   // packet types (byte 2)
 static const uint32_t SYNC_WINDOW_S = 12 * 3600;                  // catch-up covers the last 12 hours
 static const int SYNC_MAX = 60;
-static const uint8_t HOPS = 3;
+// No practical hop limit: every board relays a message once and remembers its id, so a
+// message travels as far as there are boards to carry it and can't loop.
+static const uint8_t HOPS = 255;
 static const size_t MAX_TEXT = 180, MAX_NAME = 16;
 static const char* LOG_FILE = DATA_ROOT "/coms-log.jsonl";
 
@@ -54,9 +56,9 @@ static const size_t LOG_KEEP = 300;
 struct Neighbor { uint32_t node; String name; float rssi, snr; uint64_t at; };
 static std::vector<Neighbor> neighbors;
 
-static uint32_t seen[128]; static int seenPos = 0;
+static uint32_t seen[1024]; static int seenPos = 0;
 static bool wasSeen(uint32_t id) { for (uint32_t s : seen) if (s == id) return true; return false; }
-static void markSeen(uint32_t id) { seen[seenPos] = id; seenPos = (seenPos + 1) % 128; }
+static void markSeen(uint32_t id) { seen[seenPos] = id; seenPos = (seenPos + 1) % 1024; }
 
 struct Tx { uint8_t buf[256]; size_t len; uint32_t due; };
 static std::vector<Tx> txq;
