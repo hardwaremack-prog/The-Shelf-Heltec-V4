@@ -48,7 +48,7 @@ Your shelves are normal folders at the top of the card: `Pictures`, `Music`, `Vi
 
 ## First-time setup
 
-1. Install with the [web installer](https://hardwaremack-prog.github.io/The-Shelf-Heltec-V4/) (Chrome or Edge).
+1. Install with the [web installer](https://hardwaremack-prog.github.io/The-Shelf-Heltec-V4900mhzMesh/) (Chrome or Edge).
 2. Power the board. The screen shows **Join The-Shelf-XXXX**. Join it from your phone with the password **`theshelf`**.
 3. The setup page opens (or go to `http://192.168.4.1`). Tap **Find networks**, pick your Wi-Fi and enter its password.
 4. Back on your home Wi-Fi, open the address on the screen, or **`http://shelf-v4-xxxx.local`**.
