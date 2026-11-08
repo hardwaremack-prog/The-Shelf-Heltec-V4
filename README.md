@@ -63,6 +63,7 @@ A **900MHz Coms** tab in The Shelf's Tools lets Shelf boards text each other ove
 
 - **On/off switch.** When it's on, the tab shows the message log and a box to send to everyone on the mesh (180 characters per message).
 - **Every board is a relay.** Anything new a board hears, it re-sends once after a short random wait, so messages hop board to board as far as the mesh reaches (no hop limit). Message IDs are remembered so nothing loops, and boards listen before talking.
+- **"Received" receipts.** A **✓ Sending "received"** button in the tab, on by default. When it's on, the board answers every message it hears with a short receipt that hops back to the sender, so your own messages show **✓ Received by Garage V4, Truck**. Click it to stop this board sending receipts. You'll still see receipts from boards that have theirs on.
 - **Catch-up.** When a board turns Coms on, it asks its neighbors for the last 12 hours. One of them replays what it's missing (up to 60 messages), marked "caught up", with their original times.
 - **Display.** The tab shows who's in range with signal strength, plus counts of heard, relayed and caught-up messages. The OLED shows an antenna icon while Coms is on, and new messages for 15 seconds.
 - **Settings.** You can set your name on the mesh and the transmit power: Low ~11 dBm, Normal ~20 dBm (default), or High ~27 dBm, through the V4's front-end amplifier.
@@ -77,6 +78,7 @@ A **900MHz Coms** tab in The Shelf's Tools lets Shelf boards text each other ove
 3. Boards farther away hear those re-sends and do the same, so the message spreads board to board as far as the mesh reaches.
 4. Each board remembers the last 1,024 message IDs. When a copy it already has comes back around, it ignores it, so nothing loops and each board sends each message only once.
 5. In the log, a message shows **direct** if it came straight from the sender, or **N hops** if it was relayed, along with the signal strength it arrived at.
+6. With receipts on, each board that gets a message waits 2–5 seconds (so the relays go first), then sends a tiny "received" packet. It hops back across the mesh the same way, and only the original sender keeps it. Each receipt is a few bytes, but every board sends one for every message, so on a big, busy mesh you can turn receipts off to save airtime.
 
 #### Catching up a new board
 

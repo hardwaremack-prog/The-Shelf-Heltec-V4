@@ -38,7 +38,7 @@
   async function refresh(force) {
     if (!viewing()) { clearInterval(timer); timer = null; return; }
     let c; try { c = await fetch('/api/coms').then(r => r.json()); } catch { return; }
-    const sig = JSON.stringify([c.enabled, c.radio, c.log.length, c.log.length && c.log[c.log.length - 1].id, c.neighbors.length, c.error, c.heard, c.relayed, c.synced]);
+    const sig = JSON.stringify([c.enabled, c.radio, c.receipts, c.log.length, c.log.length && c.log[c.log.length - 1].id, c.neighbors.length, c.error, c.heard, c.relayed, c.synced, c.receivedBy]);
     if (!force && sig === last) return;
     last = sig;
     render(c);
@@ -55,7 +55,8 @@
     const msgs = log.map(m => {
       const d = new Date(m.t).toDateString(); let sep = '';
       if (d !== day) { day = d; sep = `<div class="coms-day">${escapeHtml(d === new Date().toDateString() ? 'Today' : new Date(m.t).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' }))}</div>`; }
-      const meta = m.mine ? `${time(m.t)} · sent` : `${time(m.t)} · ${m.hops ? m.hops + (m.hops === 1 ? ' hop' : ' hops') : 'direct'}${m.rssi !== undefined ? ' · ' + m.rssi + ' dBm' : ''}${m.synced ? ' · caught up' : ''}`;
+      const got = (c.receivedBy || {})[m.id] || [];
+      const meta = m.mine ? `${time(m.t)} · ${got.length ? '\u2713 Received by ' + got.map(escapeHtml).join(', ') : 'sent'}` : `${time(m.t)} · ${m.hops ? m.hops + (m.hops === 1 ? ' hop' : ' hops') : 'direct'}${m.rssi !== undefined ? ' · ' + m.rssi + ' dBm' : ''}${m.synced ? ' · caught up' : ''}`;
       return sep + `<div class="coms-msg ${m.mine ? 'mine' : ''}"><div class="who">${escapeHtml(m.mine ? 'You' : (m.from || 'Unknown'))}</div><div class="txt">${escapeHtml(m.text)}</div><div class="meta">${meta}</div></div>`;
     }).join('');
     content.innerHTML = `
@@ -73,6 +74,7 @@
             <span class="coms-chip">Heard <b>${c.heard}</b></span>
             <span class="coms-chip">Relayed <b>${c.relayed}</b></span>
             <span class="coms-chip">Caught up <b>${c.synced}</b></span>
+            <button class="coms-chip coms-receipts ${c.receipts ? 'on' : ''}" id="comsReceipts" title="When on, this board tells senders it got their message">${c.receipts ? '\u2713 Sending \u201creceived\u201d' : 'Not sending \u201creceived\u201d'}</button>
           </div>
           <div class="coms-neigh">${neigh.length ? 'In range: ' + neigh.map(n => `<b style="color:var(--text)">${escapeHtml(n.name || n.node)}</b> (${n.rssi} dBm, ${ago(n.at)})`).join(', ') : 'No other boards heard yet. They show up here as soon as one transmits.'}</div>
           <details style="margin-top:10px"><summary style="cursor:pointer;color:var(--text-muted);font-size:13px">Settings</summary>
@@ -112,6 +114,8 @@
         last = ''; refresh(true);
       });
     }
+    const rc = content.querySelector('#comsReceipts');
+    if (rc) rc.addEventListener('click', async () => { await post('/api/coms/settings', { receipts: !c.receipts }); last = ''; refresh(true); });
     const save = content.querySelector('#comsSave');
     if (save) save.addEventListener('click', async () => { await post('/api/coms/settings', { name: content.querySelector('#comsName').value, level: Number(content.querySelector('#comsLevel').value) }); last = ''; refresh(true); });
     const clear = content.querySelector('#comsClear');

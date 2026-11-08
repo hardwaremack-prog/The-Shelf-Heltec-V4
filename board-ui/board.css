@@ -46,3 +46,6 @@
 .coms-off b { color: var(--text); }
 .coms-err { color: var(--coral); font-size: 13px; margin-top: 8px; }
 .coms-neigh { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+.coms-receipts { cursor: pointer; font: inherit; font-size: 12px; }
+.coms-receipts.on { background: rgba(111, 207, 151, 0.15); border-color: var(--mint); color: var(--mint); }
+.coms-receipts:hover { border-color: var(--accent); }

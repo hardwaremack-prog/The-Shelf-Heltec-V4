@@ -27,7 +27,7 @@
 
 static const float FREQ = 915.0;
 static const uint8_t MAGIC0 = 'S', MAGIC1 = '9';
-static const uint8_t T_TEXT = 1, T_SYNC_REQ = 2, T_REPLAY = 3;   // packet types (byte 2)
+static const uint8_t T_TEXT = 1, T_SYNC_REQ = 2, T_REPLAY = 3, T_RECEIPT = 4;   // packet types (byte 2)
 static const uint32_t SYNC_WINDOW_S = 12 * 3600;                  // catch-up covers the last 12 hours
 static const int SYNC_MAX = 60;
 // No practical hop limit: every board relays a message once and remembers its id, so a
@@ -35,6 +35,7 @@ static const int SYNC_MAX = 60;
 static const uint8_t HOPS = 255;
 static const size_t MAX_TEXT = 180, MAX_NAME = 16;
 static const char* LOG_FILE = DATA_ROOT "/coms-log.jsonl";
+static const char* RECEIPT_FILE = DATA_ROOT "/coms-receipts.jsonl";
 
 static SPIClass loraSPI(HSPI);              // the SD card has FSPI
 static SX1262* radio = nullptr;
@@ -42,6 +43,12 @@ static Preferences cprefs;
 static SemaphoreHandle_t comsLock;
 
 static bool enabled = false, radioUp = false;
+// "Received" receipts: when on, this board answers each message it hears with a short
+// receipt that floods back to the sender, so the sender sees who got it.
+static bool receiptsOn = true;
+static std::vector<uint32_t> myIds;                       // my recent message ids
+struct Rcpt { uint32_t msg; uint32_t node; String name; };
+static std::vector<Rcpt> receipts;
 static String myName;
 static uint32_t myNode = 0;
 static int level = 1;                       // 0 low, 1 normal, 2 high
@@ -189,10 +196,64 @@ static void handleSyncRequest(const uint8_t* b, size_t len) {
   xSemaphoreGive(comsLock);
 }
 
+static bool isMine(uint32_t msg) { return std::find(myIds.begin(), myIds.end(), msg) != myIds.end(); }
+
+static void noteReceipt(uint32_t msg, uint32_t node, const String& name, bool save) {
+  xSemaphoreTake(comsLock, portMAX_DELAY);
+  for (auto& r : receipts) if (r.msg == msg && r.node == node) { xSemaphoreGive(comsLock); return; }
+  receipts.push_back({msg, node, name});
+  if (receipts.size() > 2000) receipts.erase(receipts.begin(), receipts.begin() + 500);
+  xSemaphoreGive(comsLock);
+  if (save) {
+    File f = store->open(RECEIPT_FILE, FILE_APPEND);
+    if (f) { f.printf("{\"m\":\"%s\",\"n\":\"%s\",\"by\":\"%s\"}\n", hex8(msg).c_str(), hex8(node).c_str(), jsonEsc(name).c_str()); f.close(); }
+  }
+}
+
+// [2]=4 [3]hopsLeft [4]hopsTaken [5..8]receipt id [9..12]who received it [13..16]sender of this copy
+// [17..20]message id it's for [21]nameLen [22..]name
+static size_t buildReceipt(uint8_t* b, uint32_t rid, uint32_t receiver, uint8_t hopsLeft, uint8_t hopsTaken, uint32_t msg, const String& name) {
+  size_t n = 0;
+  b[n++] = MAGIC0; b[n++] = MAGIC1; b[n++] = T_RECEIPT; b[n++] = hopsLeft; b[n++] = hopsTaken;
+  memcpy(b + n, &rid, 4); n += 4; memcpy(b + n, &receiver, 4); n += 4; memcpy(b + n, &myNode, 4); n += 4;
+  memcpy(b + n, &msg, 4); n += 4;
+  size_t nl = std::min(name.length(), MAX_NAME); b[n++] = nl; memcpy(b + n, name.c_str(), nl); n += nl;
+  return n;
+}
+
+static void handleReceipt(const uint8_t* b, size_t len) {
+  if (len < 22) return;
+  uint8_t hopsLeft = b[3], hopsTaken = b[4];
+  uint32_t rid, receiver, msg;
+  memcpy(&rid, b + 5, 4); memcpy(&receiver, b + 9, 4); memcpy(&msg, b + 17, 4);
+  size_t nl = b[21];
+  if (22 + nl > len || nl > MAX_NAME) return;
+  String name; for (size_t i = 0; i < nl; i++) name += (char)b[22 + i];
+  if (receiver == myNode || wasSeen(rid)) return;
+  markSeen(rid);
+  if (isMine(msg)) { noteReceipt(msg, receiver, name, true); return; }   // it's for me: done
+  if (hopsLeft > 0) {                                                      // someone else's: pass it on
+    uint8_t out[64];
+    size_t n = buildReceipt(out, rid, receiver, hopsLeft - 1, hopsTaken + 1, msg, name);
+    queueTx(out, n, 600 + esp_random() % 2000);
+  }
+}
+
 static void handlePacket(const uint8_t* b, size_t len, float rssi, float snr) {
   if (len < 8 || b[0] != MAGIC0 || b[1] != MAGIC1) return;
   uint8_t type = b[2];
   if (type == T_SYNC_REQ) { handleSyncRequest(b, len); return; }
+  if (type == T_RECEIPT) {
+    if (len >= 17) {                       // still note who we heard
+      uint32_t sender; memcpy(&sender, b + 13, 4);
+      xSemaphoreTake(comsLock, portMAX_DELAY);
+      Neighbor* nb = nullptr; for (auto& x : neighbors) if (x.node == sender) nb = &x;
+      if (!nb) { neighbors.push_back({sender, "", 0, 0, 0}); nb = &neighbors.back(); }
+      nb->rssi = rssi; nb->snr = snr; nb->at = nowMs();
+      xSemaphoreGive(comsLock);
+    }
+    handleReceipt(b, len); return;
+  }
   if (type != T_TEXT && type != T_REPLAY) return;
   size_t hdr = type == T_REPLAY ? 22 : 18;
   if (len < hdr) return;
@@ -231,6 +292,12 @@ static void handlePacket(const uint8_t* b, size_t len, float rssi, float snr) {
     size_t n = buildPacket(out, id, origin, hopsLeft - 1, hopsTaken + 1, name, text);
     queueTx(out, n, 400 + esp_random() % 1600);
     relayedCount++;
+  }
+  // say "received" back to the sender (after the relay has gone out)
+  if (receiptsOn) {
+    uint8_t out[64];
+    size_t n = buildReceipt(out, esp_random(), myNode, HOPS, 0, id, myName);
+    queueTx(out, n, 2200 + esp_random() % 2500);
   }
 }
 
@@ -327,7 +394,20 @@ void comsBegin() {
   myName = cprefs.getString("name", hostName);
   level = constrain(cprefs.getInt("level", 1), 0, 2);
   enabled = cprefs.getBool("on", false);
+  receiptsOn = cprefs.getBool("receipts", true);
   loadLog();
+  for (auto& l : logRam) if (l.indexOf("\"mine\":true") >= 0) {     // my messages, so receipts match
+    int p = l.indexOf("\"id\":\""); if (p >= 0) myIds.push_back(strtoul(l.substring(p + 6, p + 14).c_str(), nullptr, 16));
+  }
+  File rf = store->open(RECEIPT_FILE, FILE_READ);
+  if (rf) {
+    while (rf.available()) {
+      String l = rf.readStringUntil('\n');
+      JsonDocument d(&psAlloc);
+      if (!deserializeJson(d, l)) noteReceipt(strtoul(d["m"] | "0", nullptr, 16), strtoul(d["n"] | "0", nullptr, 16), String(d["by"] | ""), false);
+    }
+    rf.close();
+  }
   xTaskCreatePinnedToCore(comsTask, "coms", 8192, nullptr, 2, nullptr, 1);
 }
 
@@ -337,7 +417,7 @@ bool handleComsApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod
   if (url == "/api/coms" && m == HTTP_GET) {
     String s = String("{\"enabled\":") + (enabled ? "true" : "false") + ",\"radio\":" + (radioUp ? "true" : "false") +
       ",\"name\":\"" + jsonEsc(myName) + "\",\"node\":\"" + hex8(myNode) + "\",\"level\":" + level +
-      ",\"freq\":915.0,\"heard\":" + heardCount + ",\"relayed\":" + relayedCount + ",\"sent\":" + sentCount + ",\"synced\":" + syncedCount +
+      ",\"receipts\":" + (receiptsOn ? "true" : "false") + ",\"freq\":915.0,\"heard\":" + heardCount + ",\"relayed\":" + relayedCount + ",\"sent\":" + sentCount + ",\"synced\":" + syncedCount +
       ",\"error\":\"" + jsonEsc(lastError) + "\",\"neighbors\":[";
     xSemaphoreTake(comsLock, portMAX_DELAY);
     bool first = true;
@@ -349,8 +429,19 @@ bool handleComsApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod
     }
     s += "],\"log\":[";
     for (size_t i = 0; i < logRam.size(); i++) { if (i) s += ","; s += logRam[i]; }
+    s += "],\"receivedBy\":{";           // message id -> who said "received"
+    std::vector<uint32_t> done;
+    for (auto& rc : receipts) {
+      if (std::find(done.begin(), done.end(), rc.msg) != done.end()) continue;
+      done.push_back(rc.msg);
+      if (done.size() > 1) s += ",";
+      s += "\"" + hex8(rc.msg) + "\":[";
+      bool f2 = true;
+      for (auto& x : receipts) if (x.msg == rc.msg) { if (!f2) s += ","; s += "\"" + jsonEsc(x.name.length() ? x.name : hex8(x.node)) + "\""; f2 = false; }
+      s += "]";
+    }
     xSemaphoreGive(comsLock);
-    sendJson(r, 200, s + "]}");
+    sendJson(r, 200, s + "}}");
     return true;
   }
   if (m != HTTP_POST) { sendErr(r, 405, "Use POST"); return true; }
@@ -368,6 +459,7 @@ bool handleComsApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod
     if (text.length() > MAX_TEXT) { sendErr(r, 400, "That's too long for one radio message (180 characters max)."); return true; }
     uint32_t id = esp_random();
     markSeen(id);
+    myIds.push_back(id); if (myIds.size() > 400) myIds.erase(myIds.begin());
     uint8_t out[256];
     size_t n = buildPacket(out, id, myNode, HOPS, 0, myName, text);
     queueTx(out, n, 0);
@@ -381,12 +473,13 @@ bool handleComsApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod
     String nm = b["name"] | ""; nm.trim();
     if (nm.length()) { myName = nm.substring(0, MAX_NAME); cprefs.putString("name", myName); }
     if (b["level"].is<int>()) { level = constrain(b["level"].as<int>(), 0, 2); cprefs.putInt("level", level); }
+    if (b["receipts"].is<bool>()) { receiptsOn = b["receipts"].as<bool>(); cprefs.putBool("receipts", receiptsOn); }
     sendJson(r, 200, "{\"ok\":true,\"name\":\"" + jsonEsc(myName) + "\",\"level\":" + level + "}");
     return true;
   }
   if (url == "/api/coms/clear") {
-    xSemaphoreTake(comsLock, portMAX_DELAY); logRam.clear(); xSemaphoreGive(comsLock);
-    store->remove(LOG_FILE);
+    xSemaphoreTake(comsLock, portMAX_DELAY); logRam.clear(); receipts.clear(); xSemaphoreGive(comsLock);
+    store->remove(LOG_FILE); store->remove(RECEIPT_FILE);
     sendJson(r, 200, "{\"ok\":true}");
     return true;
   }
