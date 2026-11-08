@@ -29,6 +29,8 @@ The buttons for those computer-only features are hidden on the board, and the AI
 | 3.3 V SPI microSD module | Same module and wiring as [Heltec Shelf Lite](https://github.com/hardwaremack-prog/Heltec-Shelf-Lite--Wifi-Thumbdrive) |
 | microSD card | FAT32. A 32 GB card works out of the box |
 
+![microSD wiring for The Shelf on Heltec V4](docs/sd-wiring-shelf-v4.png)
+
 | microSD module | Heltec V4 |
 |---|---|
 | VCC | **3V3** |
