@@ -121,7 +121,19 @@ static String fmtShort(uint64_t b) {
   return buf;
 }
 
+// Draws a line, scrolling it sideways if it's wider than the screen.
+static bool scrolling = false;
+static void drawLine(int y, const String& t) {
+  int tw = oled.getStrWidth(t.c_str());
+  if (tw <= 128) { oled.drawStr(0, y, t.c_str()); return; }
+  scrolling = true;
+  int span = tw + 30, off = (int)((millis() / 200) * 3 % span);
+  oled.drawStr(-off, y, t.c_str());
+  oled.drawStr(span - off, y, t.c_str());
+}
+
 static void drawStatus() {
+  scrolling = false;
   if (!oledOK || !screenOn) return;
   oled.clearBuffer();
   // top bar: name, storage, battery
@@ -159,13 +171,13 @@ static void drawStatus() {
     String l2 = onlineShelves > 0 ? String(onlineShelves) + (onlineShelves == 1 ? " Shelf nearby" : " Shelves nearby")
                                   : String("Wi-Fi ") + WiFi.RSSI() + " dBm";
     if (comsLastAt && millis() - comsLastAt < 15000) l2 = comsLastLine;
-    oled.drawStr(0, 35, l2.c_str());
+    drawLine(35, l2);
     bottom = "IP " + WiFi.localIP().toString();
   } else if (apActive) {
     oled.drawStr(0, 24, ((firstSetup ? "Join " : "Wi-Fi ") + ownSSID).c_str());
     String l2 = ownPass.length() >= 8 ? "Password: " + ownPass : String("Open network");
     if (!firstSetup && comsLastAt && millis() - comsLastAt < 15000) l2 = comsLastLine;
-    oled.drawStr(0, 35, l2.c_str());
+    drawLine(35, l2);
     bottom = (firstSetup ? "Setup " : "IP ") + WiFi.softAPIP().toString();
   } else {
     oled.drawStr(0, 24, "Connecting Wi-Fi...");
@@ -173,10 +185,11 @@ static void drawStatus() {
     bottom = BOARD_NAME " v" FW_VERSION;
   }
   if (storeTotal) {
-    int w = (int)((storeUsed * 76ULL) / storeTotal);
-    oled.drawFrame(0, 39, 78, 7); oled.drawBox(1, 40, w, 5);
+    int w = (int)((storeUsed * 62ULL) / storeTotal);
+    oled.drawFrame(0, 39, 64, 7); oled.drawBox(1, 40, w, 5);
     oled.setFont(u8g2_font_5x7_tf);
-    oled.drawStr(82, 46, (fmtShort(storeTotal - storeUsed) + " free").c_str());
+    String fr = fmtShort(storeTotal - storeUsed) + " free";
+    oled.drawStr(128 - oled.getStrWidth(fr.c_str()), 46, fr.c_str());
   }
   oled.setFont(u8g2_font_6x10_tf);
   oled.drawStr(0, 62, bottom.c_str());
@@ -509,6 +522,6 @@ void loop() {
   static uint32_t lastDraw = 0;
   static uint32_t lastBatt = 0;
   if (lastBatt == 0 || now - lastBatt > 10000) { readBattery(); lastBatt = now; }
-  if (!btnDown && now - lastDraw > 1000) { onlineShelves = onlinePeerCount(); drawStatus(); lastDraw = now; }
+  if (!btnDown && now - lastDraw > (scrolling ? 200u : 1000u)) { onlineShelves = onlinePeerCount(); drawStatus(); lastDraw = now; }
   delay(5);
 }
