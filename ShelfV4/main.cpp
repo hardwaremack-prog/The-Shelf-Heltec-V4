@@ -90,7 +90,7 @@ static void readBattery() {
 #if !CONFIG_SPIRAM_MODE_OCT
   digitalWrite(PIN_ADC_CTRL, LOW);
 #endif
-  float v = (mv / 8.0f) * 4.9f / 1000.0f;
+  float v = (mv / 8.0f) * 4.9f * 1.045f / 1000.0f;   // divider x4.9, calibration as in Meshtastic's heltec_v4
   battV = (battV < 0 || fabsf(v - battV) > 0.5f) ? v : battV * 0.7f + v * 0.3f;
 }
 // -1 = no battery (running on USB)
@@ -129,7 +129,14 @@ static void drawStatus() {
   int x = oled.getStrWidth("THE SHELF") + 3;
   oled.setFont(u8g2_font_5x7_tf); oled.drawStr(x, 9, "V4");
   x += oled.getStrWidth("V4") + 4;
-  oled.drawStr(x, 9, onSD ? "SD" : "FLASH");
+  const char* st = onSD ? "SD" : (comsOn() ? "FL" : "FLASH");
+  oled.drawStr(x, 9, st);
+  if (comsOn()) {                                   // tiny antenna: 900MHz Coms is on
+    x += oled.getStrWidth(st) + 4;
+    oled.drawVLine(x + 3, 2, 7);
+    oled.drawPixel(x + 1, 3); oled.drawPixel(x, 4); oled.drawPixel(x + 1, 5);
+    oled.drawPixel(x + 5, 3); oled.drawPixel(x + 6, 4); oled.drawPixel(x + 5, 5);
+  }
   int pct = batteryPercent();
   oled.setFont(u8g2_font_4x6_tf);
   if (pct < 0) {
@@ -151,11 +158,13 @@ static void drawStatus() {
     oled.drawStr(0, 24, (hostName + ".local").c_str());
     String l2 = onlineShelves > 0 ? String(onlineShelves) + (onlineShelves == 1 ? " Shelf nearby" : " Shelves nearby")
                                   : String("Wi-Fi ") + WiFi.RSSI() + " dBm";
+    if (comsLastAt && millis() - comsLastAt < 15000) l2 = comsLastLine;
     oled.drawStr(0, 35, l2.c_str());
     bottom = "IP " + WiFi.localIP().toString();
   } else if (apActive) {
     oled.drawStr(0, 24, ((firstSetup ? "Join " : "Wi-Fi ") + ownSSID).c_str());
     String l2 = ownPass.length() >= 8 ? "Password: " + ownPass : String("Open network");
+    if (!firstSetup && comsLastAt && millis() - comsLastAt < 15000) l2 = comsLastLine;
     oled.drawStr(0, 35, l2.c_str());
     bottom = (firstSetup ? "Setup " : "IP ") + WiFi.softAPIP().toString();
   } else {
@@ -374,7 +383,7 @@ class ShelfHandler : public AsyncWebHandler {
       return;
     }
     if (serveContent(r, url)) return;
-    bool done = handleBoardApi(r, url, m) || handleMessagingApi(r, url, m) || handleFilesApi(r, url, m) || handleToolsApi(r, url, m);
+    bool done = handleBoardApi(r, url, m) || handleComsApi(r, url, m) || handleMessagingApi(r, url, m) || handleFilesApi(r, url, m) || handleToolsApi(r, url, m);
     if (!done) sendErr(r, 404, "Not found");
     cleanup(r);
   }
@@ -475,6 +484,7 @@ void setup() {
   setupServer(server80);
   setupServer(server8080);
   messagingBegin();
+  comsBegin();
   markMusicDirty();
   lastActivity = millis();
 }

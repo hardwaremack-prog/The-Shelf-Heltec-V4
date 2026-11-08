@@ -38,6 +38,11 @@ for key in ("ai", "bigfiles"):
 if app == before:
     sys.exit("Couldn't find the TOOLS list in app.js -- The Shelf's layout changed; update pack_www.py")
 app = re.sub(r",(\s*\];\s*\nconst TOOL_LABELS)", r"\1", app)   # no trailing comma left behind
+# add the board's own tab: 900MHz Coms (drawn by board.js)
+app, n1 = re.subn(r"(\n(\s*)\{ key: 'tidysuite',)", r"\n\2{ key: 'coms', label: '900MHz Coms', color: '#E2725B' },\1", app, count=1)
+app, n2 = re.subn(r"(else if \(key === 'tidysuite'\) loadTidySuiteView\(\);)", r"\1\n  else if (key === 'coms') window.loadComsView();", app, count=1)
+if not (n1 and n2):
+    sys.exit("Couldn't add the 900MHz Coms tab to app.js -- The Shelf's layout changed; update pack_www.py")
 (stage / "app.js").write_text(app, encoding="utf-8")
 
 html = (stage / "index.html").read_text(encoding="utf-8")

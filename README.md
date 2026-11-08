@@ -17,7 +17,7 @@
 | Notes, Docs, Sheets, Slides, Draw | Online album-art lookup, tag editing, Standardize names, Remove duplicates, Export |
 | Tidy Suite | Big Transfer, backup/restore zips, spreadsheet import |
 | **Messages**: finds and chats with your other Shelves (PCs, Pis, other boards), pictures included | Accounts and passwords |
-| Visitors | |
+| **900MHz Coms**: LoRa text mesh between boards, every board a relay, 12-hour catch-up | |
 
 The buttons for those computer-only features are hidden on the board, and the AI and Big Transfer tabs are left out.
 
@@ -52,6 +52,19 @@ Your shelves are normal folders at the top of the card: `Pictures`, `Music`, `Vi
 2. Power the board. The screen shows **Join The-Shelf-XXXX**. Join it from your phone with the password **`theshelf`**.
 3. The setup page opens (or go to `http://192.168.4.1`). Tap **Find networks**, pick your Wi-Fi and enter its password.
 4. Back on your home Wi-Fi, open the address on the screen, or **`http://shelf-v4-xxxx.local`**.
+
+### 900MHz Coms (LoRa mesh between boards)
+
+A **900MHz Coms** tab in The Shelf's Tools lets Shelf boards text each other over the V4's LoRa radio, with no Wi-Fi or internet between them.
+
+- **On/off switch.** When it's on, the tab shows the message log and a box to send to everyone on the mesh (180 characters per message).
+- **Every board is a relay.** Anything new a board hears, it re-sends once after a short random wait, up to 3 hops, so messages reach boards beyond direct range. Message IDs are remembered so nothing loops, and boards listen before talking.
+- **Catch-up.** When a board turns Coms on, it asks its neighbors for the last 12 hours. One of them replays what it's missing (up to 60 messages), marked "caught up", with their original times.
+- **Display.** The tab shows who's in range with signal strength, plus counts of heard, relayed and caught-up messages. The OLED shows an antenna icon while Coms is on, and new messages for 15 seconds.
+- **Settings.** You can set your name on the mesh and the transmit power: Low ~11 dBm, Normal ~20 dBm (default), or High ~27 dBm, through the V4's front-end amplifier.
+- **Air settings.** 915.0 MHz, 125 kHz, SF9, CR 4/5, private sync word 0x12. This is its own channel, separate from Meshtastic, which it doesn't talk to.
+
+**Fit the LoRa antenna before switching Coms on.** Transmitting without an antenna can damage the radio. The log is kept on the card in `.shelf/data/coms-log.jsonl`.
 
 ### Its own Wi-Fi (car, camping, anywhere)
 

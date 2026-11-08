@@ -107,6 +107,10 @@ void portalMediaDone(AsyncWebServerRequest* r);
 bool serveContent(AsyncWebServerRequest* r, const String& url);   // /shared /play /data-files
 
 void messagingBegin();
+void comsBegin();
+bool handleComsApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);
+bool comsOn();
+extern String comsLastLine; extern uint32_t comsLastAt;
 void messagingLoop();
 void musicMetaLoop();
 void markMusicDirty();
