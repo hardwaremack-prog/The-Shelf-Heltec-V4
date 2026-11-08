@@ -2,7 +2,7 @@
 
 **[The Shelf](https://github.com/hardwaremack-prog/the-shelf), running on a Heltec WiFi LoRa 32 V4.** The board serves The Shelf's own web app (the same page you get on a PC or a Pi), with your files on a microSD card. Anyone on your home Wi-Fi opens it in a browser, and it shows up in Messages on every other Shelf in the house.
 
-### ➡️ Install from your browser: **https://hardwaremack-prog.github.io/The-Shelf-Heltec-V4/**
+### ➡️ Install from your browser: **https://hardwaremack-prog.github.io/The-Shelf-Heltec-V4900mhzMesh/**
 
 ![The Shelf on a Heltec V4](docs/screenshot-pictures.png)
 
