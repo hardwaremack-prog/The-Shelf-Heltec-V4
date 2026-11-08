@@ -67,7 +67,9 @@ static bool probeOLED() {
 static bool tryVext(int pin, int level) { pinMode(pin, OUTPUT); digitalWrite(pin, level); delay(60); return probeOLED(); }
 
 static void powerOLED() {
-#if CONFIG_SPIRAM_MODE_OCT
+#if defined(SHELF_V3)
+  bool ok = tryVext(PIN_VEXT, LOW) || tryVext(PIN_VEXT, HIGH);   // V3: GPIO36, LOW = on
+#elif CONFIG_SPIRAM_MODE_OCT
   bool ok = tryVext(PIN_VEXT_R8, LOW) || tryVext(PIN_VEXT_R8, HIGH);
 #else
   bool ok = tryVext(PIN_VEXT, LOW) || tryVext(PIN_VEXT, HIGH);
@@ -84,15 +86,27 @@ static void powerOLED() {
 // is held high. The R8 build doesn't touch GPIO37 (its PSRAM) and just reads GPIO1.
 static float battV = -1;
 static void readBattery() {
+  uint32_t mv = 0;
+#if defined(SHELF_V3)
+  // V3.0/3.1 connect the divider with ADC_CTRL LOW, V3.2 with HIGH. Unconnected, GPIO1
+  // reads about 0 V, so read both ways and keep the higher one.
+  for (int lvl = 0; lvl < 2; lvl++) {
+    pinMode(PIN_ADC_CTRL, OUTPUT); digitalWrite(PIN_ADC_CTRL, lvl ? HIGH : LOW); delay(5);
+    uint32_t s = 0;
+    for (int i = 0; i < 8; i++) s += analogReadMilliVolts(PIN_VBAT);
+    if (s > mv) mv = s;
+  }
+  pinMode(PIN_ADC_CTRL, INPUT);
+#else
 #if !CONFIG_SPIRAM_MODE_OCT
   pinMode(PIN_ADC_CTRL, OUTPUT); digitalWrite(PIN_ADC_CTRL, HIGH); delay(5);
 #endif
-  uint32_t mv = 0;
   for (int i = 0; i < 8; i++) mv += analogReadMilliVolts(PIN_VBAT);
 #if !CONFIG_SPIRAM_MODE_OCT
   digitalWrite(PIN_ADC_CTRL, LOW);
 #endif
-  float v = (mv / 8.0f) * 4.9f * 1.045f / 1000.0f;   // divider x4.9, calibration as in Meshtastic's heltec_v4
+#endif
+  float v = (mv / 8.0f) * 4.9f * 1.045f / 1000.0f;   // divider x4.9, calibration as in Meshtastic's heltec_v3/v4
   battV = (battV < 0 || fabsf(v - battV) > 0.5f) ? v : battV * 0.7f + v * 0.3f;
 }
 // -1 = no battery (running on USB)
@@ -141,8 +155,8 @@ static void drawStatus() {
   // top bar: name, storage, battery
   oled.setFont(u8g2_font_helvB08_tf); oled.drawStr(0, 9, "THE SHELF");
   int x = oled.getStrWidth("THE SHELF") + 3;
-  oled.setFont(u8g2_font_5x7_tf); oled.drawStr(x, 9, "V4");
-  x += oled.getStrWidth("V4") + 4;
+  oled.setFont(u8g2_font_5x7_tf); oled.drawStr(x, 9, BOARD_SHORT);
+  x += oled.getStrWidth(BOARD_SHORT) + 4;
   const char* st = onSD ? "SD" : (comsOn() ? "FL" : "FLASH");
   oled.drawStr(x, 9, st);
   if (comsOn()) {                                   // tiny antenna: 900MHz Coms is on
@@ -206,7 +220,7 @@ static void setupStorage() {
   if (onSD && SD.cardType() == CARD_NONE) { SD.end(); onSD = false; }
   if (onSD) store = &SD;
   else {
-    oledMsg("THE SHELF V4", "No microSD found", "Using board flash", "(first boot formats)");
+    oledMsg("THE SHELF " BOARD_SHORT, "No microSD found", "Using board flash", "(first boot formats)");
     if (!FFat.begin(true, "/ffat", 10, "ffat")) oledMsg("Storage error", "Flash format failed");
     store = &FFat;
   }
@@ -478,7 +492,7 @@ void setup() {
   char tag[5]; snprintf(tag, sizeof tag, "%02x%02x", (uint8_t)(mac >> 32), (uint8_t)(mac >> 40));
   String up = tag; up.toUpperCase();
   apName = "The-Shelf-" + up;
-  hostName = prefs.getString("host", String("shelf-v4-") + tag);
+  hostName = prefs.getString("host", String(HOST_PREFIX) + tag);
   wifiSSID = prefs.getString("ssid", "");
   wifiPass = prefs.getString("pass", "");
   hotspotMode = prefs.getString("mode", "") == "hotspot";

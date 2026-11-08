@@ -52,13 +52,19 @@ static std::vector<Rcpt> receipts;
 static String myName;
 static uint32_t myNode = 0;
 static int level = 1;                       // 0 low, 1 normal, 2 high
+#ifdef SHELF_V3
+static const int8_t CHIP_DBM[3] = {11, 17, 22}; // V3: no amplifier, the SX1262 alone tops out at 22 dBm
+static const char* LEVELS_DBM = "[11,17,22]";
+#else
 static const int8_t CHIP_DBM[3] = {0, 9, 16}; // + ~11 dB from the FEM: about 11 / 20 / 27 dBm out
+static const char* LEVELS_DBM = "[11,20,27]";
+#endif
 static uint32_t heardCount = 0, relayedCount = 0, sentCount = 0;
 static String lastError;
 
 struct Entry { String json; };
 static std::vector<String> logRam;          // newest last, capped
-static const size_t LOG_KEEP = 300;
+static const size_t LOG_KEEP = COMS_LOG_KEEP;
 
 struct Neighbor { uint32_t node; String name; float rssi, snr; uint64_t at; };
 static std::vector<Neighbor> neighbors;
@@ -87,6 +93,9 @@ bool comsOn() { return enabled && radioUp; }
 static String hex8(uint32_t v) { char b[9]; snprintf(b, sizeof b, "%08x", v); return b; }
 
 static void femOn(bool on) {
+#ifdef SHELF_V3
+  (void)on; return;                         // the V3 has no front-end module
+#endif
   pinMode(FEM_POWER, OUTPUT); pinMode(FEM_EN, OUTPUT);
   pinMode(FEM_CPS, OUTPUT); pinMode(FEM_CTX, OUTPUT);
   digitalWrite(FEM_POWER, on ? HIGH : LOW);
@@ -96,6 +105,9 @@ static void femOn(bool on) {
   if (on) delay(5);
 }
 static void femTx(bool tx) {
+#ifdef SHELF_V3
+  (void)tx; return;
+#endif
   digitalWrite(FEM_CPS, tx ? HIGH : LOW);
   digitalWrite(FEM_CTX, tx ? HIGH : LOW);
 }
@@ -202,7 +214,7 @@ static void noteReceipt(uint32_t msg, uint32_t node, const String& name, bool sa
   xSemaphoreTake(comsLock, portMAX_DELAY);
   for (auto& r : receipts) if (r.msg == msg && r.node == node) { xSemaphoreGive(comsLock); return; }
   receipts.push_back({msg, node, name});
-  if (receipts.size() > 2000) receipts.erase(receipts.begin(), receipts.begin() + 500);
+  if (receipts.size() > COMS_RCPT_KEEP) receipts.erase(receipts.begin(), receipts.begin() + COMS_RCPT_KEEP / 4);
   xSemaphoreGive(comsLock);
   if (save) {
     File f = store->open(RECEIPT_FILE, FILE_APPEND);
@@ -417,7 +429,7 @@ bool handleComsApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod
   if (url == "/api/coms" && m == HTTP_GET) {
     String s = String("{\"enabled\":") + (enabled ? "true" : "false") + ",\"radio\":" + (radioUp ? "true" : "false") +
       ",\"name\":\"" + jsonEsc(myName) + "\",\"node\":\"" + hex8(myNode) + "\",\"level\":" + level +
-      ",\"receipts\":" + (receiptsOn ? "true" : "false") + ",\"freq\":915.0,\"heard\":" + heardCount + ",\"relayed\":" + relayedCount + ",\"sent\":" + sentCount + ",\"synced\":" + syncedCount +
+      ",\"receipts\":" + (receiptsOn ? "true" : "false") + ",\"levels\":" + LEVELS_DBM + ",\"freq\":915.0,\"heard\":" + heardCount + ",\"relayed\":" + relayedCount + ",\"sent\":" + sentCount + ",\"synced\":" + syncedCount +
       ",\"error\":\"" + jsonEsc(lastError) + "\",\"neighbors\":[";
     xSemaphoreTake(comsLock, portMAX_DELAY);
     bool first = true;

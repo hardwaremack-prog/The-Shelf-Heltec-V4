@@ -1,4 +1,4 @@
-// The Shelf for Heltec V4: small touches on top of The Shelf's own page.
+// The Shelf for Heltec V4 (and V3): small touches on top of The Shelf's own page.
 (function () {
   async function boardInfo() {
     try { return await fetch('/api/board/info').then(r => r.json()); } catch { return null; }
@@ -28,7 +28,7 @@
 // ---- 900MHz Coms: a simple LoRa text mesh between Shelf boards ----
 (function () {
   let timer = null, last = '', drafting = false;
-  const LEVELS = ['Low (~11 dBm)', 'Normal (~20 dBm)', 'High (~27 dBm)'];
+  const LEVEL_NAMES = ['Low', 'Normal', 'High'];
   const ago = t => { const s = Math.max(0, (Date.now() - t) / 1000); return s < 60 ? 'just now' : s < 3600 ? Math.floor(s / 60) + ' min ago' : s < 86400 ? Math.floor(s / 3600) + ' h ago' : new Date(t).toLocaleDateString(); };
   const time = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const post = (u, d) => fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d || {}) });
@@ -80,7 +80,7 @@
           <details style="margin-top:10px"><summary style="cursor:pointer;color:var(--text-muted);font-size:13px">Settings</summary>
             <div class="coms-settings">
               <label>Your name on the mesh<input id="comsName" maxlength="16" value="${escapeHtml(c.name)}"></label>
-              <label>Transmit power<select id="comsLevel">${LEVELS.map((l, i) => `<option value="${i}" ${i === c.level ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+              <label>Transmit power<select id="comsLevel">${LEVEL_NAMES.map((l, i) => `<option value="${i}" ${i === c.level ? 'selected' : ''}>${l} (~${(c.levels || [11, 20, 27])[i]} dBm)</option>`).join('')}</select></label>
               <button class="coms-btn secondary" id="comsSave">Save</button>
               <button class="coms-btn secondary" id="comsClear">Clear log</button>
             </div>
@@ -92,7 +92,7 @@
           <form class="coms-compose" id="comsForm"><input id="comsInput" maxlength="180" placeholder="Message everyone on the mesh…" autocomplete="off"><button type="submit">Send</button></form>
           <div class="coms-count" id="comsCount"></div>
         ` : `<div class="coms-card coms-off">
-            <b>How it works:</b> every Heltec V4 running The Shelf has a 900 MHz LoRa radio. With Coms on, boards in range hear each other directly, and each board re-sends what it hears, so messages hop from board to board as far as the mesh reaches. A board that joins late is caught up on the last 12 hours by its neighbors. No internet or Wi-Fi needed between boards.<br><br>
+            <b>How it works:</b> every Heltec V3 and V4 running The Shelf has a 900 MHz LoRa radio. With Coms on, boards in range hear each other directly, and each board re-sends what it hears, so messages hop from board to board as far as the mesh reaches. A board that joins late is caught up on the last 12 hours by its neighbors. No internet or Wi-Fi needed between boards.<br><br>
             Fit the LoRa antenna before switching it on. It uses its own channel (915.0 MHz), separate from Meshtastic.</div>`}
       </div>`;
     const logEl = content.querySelector('#comsLog');

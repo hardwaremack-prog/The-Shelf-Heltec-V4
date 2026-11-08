@@ -2,6 +2,7 @@
 # Builds The Shelf for Heltec V4 into docs/firmware/:
 #   shelf-v4.bin     Heltec V4  (ESP32-S3R2, 2 MB PSRAM)  -- most V4 boards
 #   shelf-v4-r8.bin  Heltec V4-R8 (ESP32-S3R8, 8 MB PSRAM)
+#   shelf-v3.bin     Heltec V3  (ESP32-S3FN8, 8 MB flash, no PSRAM)
 # Each is a full image (bootloader + app + The Shelf's web app) to flash at 0x0.
 #
 # Needs: arduino-cli + esp32 core 2.0.17 + the libraries in README.md, mklittlefs,
@@ -15,7 +16,8 @@ if [ ! -f "$SHELF/public/app.js" ]; then
   SHELF=build/the-shelf
 fi
 mkdir -p build docs/firmware
-python3 tools/pack_www.py "$SHELF" build/www.bin 0x200000
+python3 tools/pack_www.py "$SHELF" build/www-v4.bin 0x200000 V4
+python3 tools/pack_www.py "$SHELF" build/www-v3.bin 0x200000 V3
 
 CORE="$HOME/Arduino/hardware/espressif/esp32"
 TOOLPROPS=()
@@ -27,22 +29,25 @@ fi
 ESPTOOL="esptool.py"
 [ -f "$CORE/tools/esptool/esptool.py" ] && ESPTOOL="python3 $CORE/tools/esptool/esptool.py"
 
-build() {   # name psram-option
-  local name=$1 psram=$2 bd="build/$1"
-  cp partitions/v4_16mb.csv ShelfV4/partitions.csv
+build() {   # name psram-option flash-size partitions app-size www-offset extra-defines usb
+  local name=$1 psram=$2 flash=$3 parts=$4 appmax=$5 wwwoff=$6 defs=$7 cdc=$8 bd="build/$1" www="build/www-v4.bin"
+  [[ "$defs" == *SHELF_V3* ]] && www="build/www-v3.bin"
+  cp "partitions/$parts" ShelfV4/partitions.csv
   arduino-cli compile \
-    --fqbn "espressif:esp32:esp32s3:FlashSize=16M,FlashMode=qio,PSRAM=$psram,USBMode=hwcdc,CDCOnBoot=cdc,CPUFreq=240" \
-    --build-property "compiler.cpp.extra_flags=-DCONFIG_ASYNC_TCP_RUNNING_CORE=0 -DCONFIG_ASYNC_TCP_STACK_SIZE=16384" \
-    --build-property "upload.maximum_size=3145728" \
+    --fqbn "espressif:esp32:esp32s3:FlashSize=$flash,FlashMode=qio,PSRAM=$psram,USBMode=hwcdc,CDCOnBoot=$cdc,CPUFreq=240" \
+    --build-property "compiler.cpp.extra_flags=-DCONFIG_ASYNC_TCP_RUNNING_CORE=0 -DCONFIG_ASYNC_TCP_STACK_SIZE=16384 $defs" \
+    --build-property "upload.maximum_size=$appmax" \
     ${TOOLPROPS[@]+"${TOOLPROPS[@]}"} --build-path "$bd" ShelfV4
   rm -f ShelfV4/partitions.csv
   local boot_app0
   boot_app0="$(find "$CORE" "$HOME/.arduino15" -name boot_app0.bin 2>/dev/null | head -1)"
-  $ESPTOOL --chip esp32s3 merge_bin -o "docs/firmware/$name.bin" --flash_mode keep --flash_freq keep --flash_size 16MB \
+  $ESPTOOL --chip esp32s3 merge_bin -o "docs/firmware/$name.bin" --flash_mode keep --flash_freq keep --flash_size "${flash}B" \
     0x0 "$bd/ShelfV4.ino.bootloader.bin" 0x8000 "$bd/ShelfV4.ino.partitions.bin" \
-    0xe000 "$boot_app0" 0x10000 "$bd/ShelfV4.ino.bin" 0x310000 build/www.bin
+    0xe000 "$boot_app0" 0x10000 "$bd/ShelfV4.ino.bin" "$wwwoff" "$www"
 }
 
-build shelf-v4    enabled
-build shelf-v4-r8 opi
+#     name        PSRAM    flash partitions       app max  www       defines     Serial
+build shelf-v4    enabled  16M   v4_16mb.csv      3145728  0x310000  ""          cdc
+build shelf-v4-r8 opi      16M   v4_16mb.csv      3145728  0x310000  ""          cdc
+build shelf-v3    disabled 8M    v3_8mb.csv       1835008  0x1D0000  -DSHELF_V3  default   # V3 talks USB through a CP2102
 ls -la docs/firmware

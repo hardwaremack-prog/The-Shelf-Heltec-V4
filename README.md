@@ -1,6 +1,6 @@
-# The Shelf for Heltec V4
+# The Shelf for Heltec V4 (and V3)
 
-**[The Shelf](https://github.com/hardwaremack-prog/the-shelf), running on a Heltec WiFi LoRa 32 V4.** The board serves The Shelf's own web app (the same page you get on a PC or a Pi), with your files on a microSD card. Anyone on your home Wi-Fi opens it in a browser, and it shows up in Messages on every other Shelf in the house.
+**[The Shelf](https://github.com/hardwaremack-prog/the-shelf), running on a Heltec WiFi LoRa 32 V4, or a V3.** The board serves The Shelf's own web app (the same page you get on a PC or a Pi), with your files on a microSD card. Anyone on your home Wi-Fi opens it in a browser, and it shows up in Messages on every other Shelf in the house.
 
 ### ➡️ Install from your browser: **https://hardwaremack-prog.github.io/The-Shelf-Heltec-V4900mhzMesh/**
 
@@ -25,13 +25,13 @@ The buttons for those computer-only features are hidden on the board, and the AI
 
 | Part | Notes |
 |---|---|
-| Heltec WiFi LoRa 32 **V4** | The standard V4 (ESP32-S3R2, 2 MB PSRAM), or the V4-R8 (8 MB PSRAM). Each has its own install button |
+| Heltec WiFi LoRa 32 **V4** or **V3** | The standard V4 (ESP32-S3R2, 2 MB PSRAM), the V4-R8 (8 MB PSRAM), or the V3 (8 MB flash, no PSRAM). Each has its own install button |
 | 3.3 V SPI microSD module | Same module and wiring as [Heltec Shelf Lite](https://github.com/hardwaremack-prog/Heltec-Shelf-Lite--Wifi-Thumbdrive) |
 | microSD card | FAT32. A 32 GB card works out of the box |
 
 ![microSD wiring for The Shelf on Heltec V4](docs/sd-wiring-shelf-v4.png)
 
-| microSD module | Heltec V4 |
+| microSD module | Heltec V4 / V3 |
 |---|---|
 | VCC | **3V3** |
 | GND | GND |
@@ -40,7 +40,18 @@ The buttons for those computer-only features are hidden on the board, and the AI
 | CLK (SCK) | GPIO 47 |
 | MOSI | GPIO 48 |
 
-With no card, The Shelf keeps files in about 10 MB of the board's own flash. The screen shows **SD** or **FLASH** in the corner.
+The V3 uses the same pins: GPIO 4 and 6 are on one header row, 47 and 48 on the other.
+
+With no card, The Shelf keeps files in the board's own flash: about 10 MB on a V4, about 4 MB on a V3. The screen shows **SD** or **FLASH** in the corner.
+
+### On a Heltec V3
+
+The V3 gets the same Shelf, the same tabs and the same 900MHz Coms. Its mesh settings match the V4's, so **V3 and V4 boards are on one mesh**, relaying and catching each other up. The differences:
+
+- **Transmit power.** The V3 has no front-end amplifier, so its levels are Low ~11, Normal ~17 and High ~22 dBm (the V4 reaches ~27). The tab shows the right numbers for each board.
+- **Memory.** The V3 has no PSRAM, so it keeps the newest 150 Coms messages on screen (the V4 keeps 300). The full log stays on the card. Give it a little longer with lots of people browsing at once.
+- **Storage without a card** is about 4 MB, so fit a microSD card.
+- **Screen** says **V3** in the top bar, and its address is `shelf-v3-xxxx.local`.
 
 ### On the card
 
@@ -55,7 +66,7 @@ Your shelves are normal folders at the top of the card: `Pictures`, `Music`, `Vi
 
 ### 900MHz Coms (LoRa mesh between boards)
 
-A **900MHz Coms** tab in The Shelf's Tools lets Shelf boards text each other over the V4's LoRa radio, with no Wi-Fi or internet between them.
+A **900MHz Coms** tab in The Shelf's Tools lets Shelf boards (V4 and V3) text each other over their LoRa radios, with no Wi-Fi or internet between them.
 
 ![900MHz Coms tab: on, with the message log, who's in range, and settings](docs/screenshots/coms-desktop.png)
 
@@ -66,7 +77,7 @@ A **900MHz Coms** tab in The Shelf's Tools lets Shelf boards text each other ove
 - **"Received" receipts.** A **✓ Sending "received"** button in the tab, on by default. When it's on, the board answers every message it hears with a short receipt that hops back to the sender, so your own messages show **✓ Received by Garage V4, Truck**. Click it to stop this board sending receipts. You'll still see receipts from boards that have theirs on.
 - **Catch-up.** When a board turns Coms on, it asks its neighbors for the last 12 hours. One of them replays what it's missing (up to 60 messages), marked "caught up", with their original times.
 - **Display.** The tab shows who's in range with signal strength, plus counts of heard, relayed and caught-up messages. The OLED shows an antenna icon while Coms is on, and new messages for 15 seconds.
-- **Settings.** You can set your name on the mesh and the transmit power: Low ~11 dBm, Normal ~20 dBm (default), or High ~27 dBm, through the V4's front-end amplifier.
+- **Settings.** You can set your name on the mesh and the transmit power. On a V4: Low ~11 dBm, Normal ~20 dBm (default), or High ~27 dBm, through its front-end amplifier. On a V3: ~11, ~17 or ~22 dBm.
 - **Air settings.** 915.0 MHz, 125 kHz, SF9, CR 4/5, private sync word 0x12. This is its own channel, separate from Meshtastic, which it doesn't talk to.
 
 **Fit the LoRa antenna before switching Coms on.** Transmitting without an antenna can damage the radio. The log is kept on the card in `.shelf/data/coms-log.jsonl`.
@@ -144,7 +155,7 @@ The board talks to other Shelves the same way they talk to each other: `shelf-pr
 
 ## Building
 
-`build.sh` packs The Shelf's current `public/` folder (cloned from [the-shelf](https://github.com/hardwaremack-prog/the-shelf), or set `SHELF=/path/to/the-shelf`) into a LittleFS image, compiles the firmware for both V4 versions, and writes full images to `docs/firmware/`.
+`build.sh` packs The Shelf's current `public/` folder (cloned from [the-shelf](https://github.com/hardwaremack-prog/the-shelf), or set `SHELF=/path/to/the-shelf`) into a LittleFS image, compiles the firmware for both V4 versions and the V3 (`-DSHELF_V3`, 8 MB layout in `partitions/v3_8mb.csv`), and writes full images to `docs/firmware/`.
 
 Needs:
 - arduino-cli with **esp32 core 2.0.17**

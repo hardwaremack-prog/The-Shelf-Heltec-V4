@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pack The Shelf's web app (its public/ folder) into a LittleFS image for the board.
 
-    python3 tools/pack_www.py <path-to-the-shelf> <out.bin> [size]
+    python3 tools/pack_www.py <path-to-the-shelf> <out.bin> [size] [V4|V3]
 
 - Uses The Shelf's own index.html, app.js, style.css, pdf.js and Tidy Suite unchanged,
   except: the AI and Big Transfer tabs are taken out (they need a computer), and
@@ -14,6 +14,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 shelf = pathlib.Path(sys.argv[1]).resolve()
 out_bin = pathlib.Path(sys.argv[2]).resolve()
 size = int(sys.argv[3], 0) if len(sys.argv) > 3 else 0x200000
+board = (sys.argv[4] if len(sys.argv) > 4 else "V4").upper()
 public = shelf / "public"
 if not (public / "app.js").exists():
     sys.exit(f"Can't find The Shelf's public/app.js under {shelf}")
@@ -49,7 +50,7 @@ html = (stage / "index.html").read_text(encoding="utf-8")
 html = html.replace('<link rel="stylesheet" href="style.css">',
                     '<link rel="stylesheet" href="style.css">\n<link rel="stylesheet" href="board.css">', 1)
 html = html.replace('<script src="app.js"></script>', '<script src="app.js"></script>\n<script src="board.js"></script>', 1)
-html = html.replace("<title>The Shelf</title>", "<title>The Shelf · Heltec V4</title>", 1)
+html = html.replace("<title>The Shelf</title>", f"<title>The Shelf · Heltec {board}</title>", 1)
 if "board.js" not in html or "board.css" not in html:
     sys.exit("Couldn't add board.js/board.css to index.html")
 (stage / "index.html").write_text(html, encoding="utf-8")
@@ -60,6 +61,15 @@ for src in (ROOT / "board-ui").rglob("*"):
         dst = stage / src.relative_to(ROOT / "board-ui")
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
+
+# name the right board in the page (board.js and the settings page say "Heltec V4")
+if board != "V4":
+    for f in (stage / "board.js", stage / "board" / "index.html"):
+        t = f.read_text(encoding="utf-8")
+        t = t.replace('<span class="chip">V4</span>', f'<span class="chip">{board}</span>')
+        t = t.replace("Heltec V3 and V4", "Heltec V3 and V\x00")   # keep this one as is
+        t = t.replace("Heltec V4", f"Heltec {board}").replace("Heltec V3 and V\x00", "Heltec V3 and V4")
+        f.write_text(t, encoding="utf-8")
 
 try:
     rev = subprocess.run(["git", "-C", str(shelf), "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
