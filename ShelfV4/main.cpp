@@ -387,6 +387,7 @@ class ShelfHandler : public AsyncWebHandler {
   void handleBody(AsyncWebServerRequest* r, uint8_t* data, size_t len, size_t index, size_t total) override {
     if (index == 0) {
       if (r->_tempObject) return;
+      if (r->client() && total > 64 * 1024) r->client()->setRxTimeout(30);   // big pasted pictures / docs: don't drop on a slow card
       bool ram = total <= BODY_RAM_MAX;
       Body* b = (Body*)malloc(sizeof(Body) + (ram ? total : 0));
       if (!b) return;

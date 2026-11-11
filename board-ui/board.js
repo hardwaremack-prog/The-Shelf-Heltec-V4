@@ -91,9 +91,25 @@
   }
   function refused() { if (Date.now() - dismissedAt > 2500) unlock(true); }
   // Any refused change (fetch or upload) brings up the unlock prompt.
+  // The Shelf's upload list only says "failed": show why, from the board's answer.
+  function explainUpload(why) {
+    setTimeout(() => {
+      const st = [...document.querySelectorAll('#uploadList .status.err')].find(x => !x.dataset.why);
+      if (!st) return;
+      st.dataset.why = '1';
+      st.title = why;
+      const m = document.createElement('div');
+      m.className = 'upload-why'; m.textContent = why;
+      st.parentElement.appendChild(m);
+    }, 60);
+  }
   window.fetch = async function (...args) {
-    const r = await _fetch(...args);
+    const isUpload = String(args[0]).includes('/api/upload');
+    let r;
+    try { r = await _fetch(...args); }
+    catch (e) { if (isUpload) explainUpload('The connection to the board dropped partway through. Try again, closer to the board or one file at a time.'); throw e; }
     if (r.status === 403 && r.headers.get('X-Shelf-ReadOnly')) { refused(); load(); }
+    else if (isUpload && !r.ok) r.clone().json().then(j => explainUpload(j.error || ('The board answered ' + r.status))).catch(() => explainUpload('The board answered ' + r.status));
     return r;
   };
   const send = XMLHttpRequest.prototype.send;

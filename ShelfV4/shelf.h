@@ -84,7 +84,10 @@ struct UploadCtx {           // multipart uploads (also freed with free())
   char saved[160];
   char mediaType[8];
   int count;
+  size_t fill;               // bytes waiting in buf (written to the card in big blocks)
+  uint8_t buf[1];            // UPLOAD_BUF bytes (flexible size, same block)
 };
+#define UPLOAD_BUF (16 * 1024)
 
 // ---------------------------------------------------------------- responses
 void sendJson(AsyncWebServerRequest* r, int code, const String& body);

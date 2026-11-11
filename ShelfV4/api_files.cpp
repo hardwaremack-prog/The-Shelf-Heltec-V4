@@ -137,18 +137,34 @@ static UploadCtx* uploadOf(AsyncWebServerRequest* r) {
   return (u && u->magic == UPLOAD_MAGIC) ? u : nullptr;
 }
 
+// Writes whatever is waiting in the buffer. Big, even blocks are far quicker on an SD card
+// than the ~1.4 KB pieces the network hands us.
+static bool uploadFlush(AsyncWebServerRequest* r, UploadCtx* u) {
+  if (!u->fill) return true;
+  bool ok = r->_tempFile && r->_tempFile.write(u->buf, u->fill) == u->fill;
+  u->fill = 0;
+  return ok;
+}
+static void uploadFail(AsyncWebServerRequest* r, UploadCtx* u, uint8_t err) {
+  u->err = err; u->fill = 0;
+  if (r->_tempFile) { String p = String(r->_tempFile.path()); r->_tempFile.close(); store->remove(p); }
+}
+
 void handleUploadPart(AsyncWebServerRequest* r, const String& filename, size_t index, uint8_t* data, size_t len, bool final) {
   UploadCtx* u = uploadOf(r);
   if (!u) {
     if (r->_tempObject) return;
-    u = (UploadCtx*)calloc(1, sizeof(UploadCtx));
+    u = (UploadCtx*)calloc(1, sizeof(UploadCtx) + UPLOAD_BUF);
     if (!u) return;
     u->magic = UPLOAD_MAGIC;
     u->media = r->url() == "/api/portal/posts/media";
     r->_tempObject = u;
+    // The web server drops a connection after 3 s without new data. A big upload can pause
+    // longer than that while the card catches up, so give it 30 s.
+    if (r->client()) r->client()->setRxTimeout(30);
   }
   if (index == 0) {
-    if (r->_tempFile) r->_tempFile.close();
+    if (r->_tempFile) { uploadFlush(r, u); r->_tempFile.close(); }
     if (u->err) return;
     String dir, name;
     if (u->media) {
@@ -168,24 +184,29 @@ void handleUploadPart(AsyncWebServerRequest* r, const String& filename, size_t i
     }
     mkdirs(dir);
     strlcpy(u->saved, name.c_str(), sizeof u->saved);
+    u->fill = 0;
     r->_tempFile = store->open(dir + "/" + name, FILE_WRITE);
-    if (!r->_tempFile) { u->err = 2; return; }
+    if (!r->_tempFile) { u->err = 4; return; }
   }
   if (u->err || !r->_tempFile) return;
-  if (len && r->_tempFile.write(data, len) != len) {
-    u->err = 2;
-    String p = String(r->_tempFile.path());
-    r->_tempFile.close(); store->remove(p);
-    return;
+  while (len) {
+    size_t n = std::min(len, (size_t)UPLOAD_BUF - u->fill);
+    memcpy(u->buf + u->fill, data, n); u->fill += n; data += n; len -= n;
+    if (u->fill == UPLOAD_BUF && !uploadFlush(r, u)) { uploadFail(r, u, 2); return; }
   }
-  if (final) { r->_tempFile.close(); u->count++; }
+  if (final) {
+    if (!uploadFlush(r, u)) { uploadFail(r, u, 2); return; }
+    r->_tempFile.close(); u->count++;
+  }
 }
 
 void filesUploadDone(AsyncWebServerRequest* r) {
   UploadCtx* u = uploadOf(r);
   if (!u || (!u->count && !u->err)) return sendErr(r, 400, "No file was received.");
   if (u->err == 1) return sendErr(r, 400, "Invalid category");
-  if (u->err) return sendErr(r, 400, onSD ? "Couldn't save the file -- is the card full?" : "Couldn't save the file -- the board's storage is full. Fit a microSD card for more room.");
+  if (u->err == 4) return sendErr(r, 500, "Couldn't create the file on the " + String(onSD ? "microSD card. Check the card's wiring, or try a shorter file name." : "board's flash."));
+  if (u->err) return sendErr(r, 500, onSD ? "Writing to the microSD card failed partway. Check that the card isn't full and the wires are snug, then try again."
+                                          : "Couldn't save the file -- the board's storage is full. Fit a microSD card for more room.");
   invalidateCounts();
   if (String(u->cat) == "Music") markMusicDirty();
   sendJson(r, 200, String("{\"uploaded\":[\"") + jsonEsc(u->saved) + "\"]}");
