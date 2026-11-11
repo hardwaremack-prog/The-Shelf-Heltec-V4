@@ -136,21 +136,10 @@ static UploadCtx* uploadOf(AsyncWebServerRequest* r) {
 // it belongs, up to 3 more times, before giving up on the upload.
 static bool uploadFlush(AsyncWebServerRequest* r, UploadCtx* u) {
   if (!u->fill) return true;
-  for (int t = 0; t < 4; t++) {
-    if (t) {
-      if (r->_tempFile) r->_tempFile.close();
-      delay(200 * t);
-      r->_tempFile = store->open(u->full, "r+");
-      if (!r->_tempFile || !r->_tempFile.seek(u->synced)) continue;
-      u->retries++;
-    }
-    if (r->_tempFile && r->_tempFile.write(u->buf, u->fill) == u->fill) {
-      r->_tempFile.flush();
-      if (r->_tempFile.position() == u->synced + u->fill) { u->synced += u->fill; u->fill = 0; return true; }
-    }
-  }
+  bool ok = writeBlockRetry(r->_tempFile, u->full, u->buf, u->fill, u->synced);
+  if (ok) u->retries = 0;
   u->fill = 0;
-  return false;
+  return ok;
 }
 static void uploadFail(AsyncWebServerRequest* r, UploadCtx* u, uint8_t err) {
   u->err = err; u->fill = 0;

@@ -155,6 +155,7 @@ async function post(u,d){const r=await fetch(u,{method:'POST',headers:{'Content-
 async function load(){try{I=await fetch('/api/board/info').then(r=>r.json())}catch(e){return}
   const up=I.uptime>86400?Math.floor(I.uptime/86400)+'d '+Math.floor(I.uptime%86400/3600)+'h':Math.floor(I.uptime/3600)+'h '+Math.floor(I.uptime%3600/60)+'m';
   const rows=[['Board',I.board+(I.psram?' · '+Math.round(I.psram/1048576)+' MB PSRAM':'')],['Firmware','v'+I.fw],['Storage',I.storage+' · '+fmt(I.total)],['Free',fmt(I.total-I.used)],['Address',I.ip],['Name',I.host+'.local'],['Up for',up]];
+  if(I.storage==='microSD card')rows.push(['Card writes',(I.sdFailures?I.sdFailures+' failed · ':'')+(I.sdRetries?I.sdRetries+' needed a retry':'all clean')+' since restart']);
   $('#info').innerHTML=rows.map(r=>`<div class="kv"><span>${r[0]}</span><span>${esc(r[1])}</span></div>`).join('');
   $('#wNow').textContent=I.ssid?`On ${I.ssid} (${I.rssi} dBm)`
     :I.hotspot?`Own Wi-Fi "${I.apName}" · ${I.clients} connected`

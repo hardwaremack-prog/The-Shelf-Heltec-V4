@@ -216,7 +216,12 @@ static void drawStatus() {
 // ------------------------------------------------------------ storage
 static void setupStorage() {
   sdSPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
-  if (SD.begin(SD_CS, sdSPI, 20000000, "/sd", 10)) onSD = true;
+  // Bare microSD breakouts have no pull-up resistors. Without one the card's data-out line
+  // floats while it's busy, and the board can misread "busy" or "write accepted", so writes
+  // fail now and then. The ESP32's own pull-ups fix that (as a 10k resistor would).
+  for (int pin : {SD_MISO, SD_MOSI, SD_CS}) gpio_pullup_en((gpio_num_t)pin);
+  // 10 MHz: plenty for Wi-Fi speeds, and more margin than 20 MHz on jumpers and headers.
+  if (SD.begin(SD_CS, sdSPI, 10000000, "/sd", 10)) onSD = true;
   else if (SD.begin(SD_CS, sdSPI, 4000000, "/sd", 10)) onSD = true;   // slower, for long wires
   if (onSD && SD.cardType() == CARD_NONE) { SD.end(); onSD = false; }
   if (onSD) store = &SD;
@@ -303,7 +308,7 @@ bool handleBoardApi(AsyncWebServerRequest* r, const String& url, WebRequestMetho
       ",\"setup\":" + (firstSetup ? "true" : "false") + ",\"homeSsid\":\"" + jsonEsc(wifiSSID) + "\",\"apOpen\":" + (ownPass.length() >= 8 ? "false" : "true") + ",\"apPass\":\"" + jsonEsc(ownPass) + "\"" +
       ",\"clients\":" + (apActive ? WiFi.softAPgetStationNum() : 0) + ",\"timeSet\":" + (time(nullptr) > 1700000000 ? "true" : "false") +
       ",\"uptime\":" + (millis() / 1000) +
-      ",\"sdPins\":\"" SD_PINS "\",\"heap\":" + ESP.getFreeHeap() + ",\"psram\":" + ESP.getPsramSize() + "}";
+      ",\"sdPins\":\"" SD_PINS "\",\"sdRetries\":" + String(sdRetries) + ",\"sdFailures\":" + String(sdFailures) + ",\"heap\":" + ESP.getFreeHeap() + ",\"psram\":" + ESP.getPsramSize() + "}";
     sendJson(r, 200, s); return true;
   }
   if (url == "/api/board/wifi/scan") {
@@ -389,7 +394,7 @@ class ShelfHandler : public AsyncWebHandler {
       if (r->_tempObject) return;
       if (r->client() && total > 64 * 1024) r->client()->setRxTimeout(30);   // big pasted pictures / docs: don't drop on a slow card
       bool ram = total <= BODY_RAM_MAX;
-      Body* b = (Body*)malloc(sizeof(Body) + (ram ? total : 0));
+      Body* b = (Body*)malloc(sizeof(Body) + (ram ? total : UPLOAD_BUF));
       if (!b) return;
       memset(b, 0, sizeof(Body));
       b->magic = BODY_MAGIC; b->len = total; b->tooBig = total > BODY_MAX;
@@ -403,10 +408,23 @@ class ShelfHandler : public AsyncWebHandler {
     }
     Body* b = bodyOf(r);
     if (!b || b->tooBig) return;
+    size_t n0 = len;
     if (!b->inFile) { if (index + len <= b->len) memcpy(b->buf + index, data, len); }
     else if (r->_tempFile) {
-      if (r->_tempFile.write(data, len) != len) { b->tooBig = true; r->_tempFile.close(); }
-      else if (index + len >= total) r->_tempFile.close();
+      // collect 16 KB at a time (far faster on the card than ~1.4 KB pieces), retrying a refused block
+      while (len) {
+        size_t n = std::min(len, (size_t)UPLOAD_BUF - b->fill);
+        memcpy(b->buf + b->fill, data, n); b->fill += n; data += n; len -= n;
+        if (b->fill == UPLOAD_BUF) {
+          if (!writeBlockRetry(r->_tempFile, b->path, (uint8_t*)b->buf, b->fill, b->synced)) { b->tooBig = true; r->_tempFile.close(); return; }
+          b->fill = 0;
+        }
+      }
+      if (index + n0 >= total) {
+        if (!writeBlockRetry(r->_tempFile, b->path, (uint8_t*)b->buf, b->fill, b->synced)) b->tooBig = true;
+        b->fill = 0;
+        r->_tempFile.close();
+      }
     }
   }
 

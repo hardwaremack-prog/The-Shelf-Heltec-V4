@@ -63,7 +63,9 @@ struct Body {                 // malloc'd as one block (the request frees it wit
   bool inFile, tooBig;
   size_t len;
   char path[48];
-  char buf[1];                // small bodies live here (flexible size)
+  size_t fill;                // big bodies: bytes waiting in buf for the card
+  uint32_t synced;            // big bodies: bytes safely on the card
+  char buf[1];                // small bodies live here; big ones use it as a 16 KB write buffer
 };
 #define BODY_MAGIC   0x5348424fu
 #define UPLOAD_MAGIC 0x5348554cu
@@ -98,6 +100,10 @@ struct UploadCtx {           // multipart uploads (also freed with free())
   uint8_t buf[1];            // UPLOAD_BUF bytes (flexible size, same block)
 };
 #define UPLOAD_BUF (16 * 1024)
+// Writes one block to a file being saved and makes it stick; if the card refuses it, reopens
+// the file and writes the block again where it belongs (up to 3 more times).
+bool writeBlockRetry(File& f, const char* path, const uint8_t* buf, size_t n, uint32_t& synced);
+extern volatile uint32_t sdRetries, sdFailures;   // shown on the settings page
 
 // ---------------------------------------------------------------- responses
 void sendJson(AsyncWebServerRequest* r, int code, const String& body);

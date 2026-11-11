@@ -550,3 +550,24 @@ std::vector<String> dirNames(const String& path) {
   return n;
 }
 bool hasName(const std::vector<String>& n, const String& name) { return std::binary_search(n.begin(), n.end(), name); }
+
+// ------------------------------------------------------------ careful block writes
+volatile uint32_t sdRetries = 0, sdFailures = 0;
+bool writeBlockRetry(File& f, const char* path, const uint8_t* buf, size_t n, uint32_t& synced) {
+  if (!n) return true;
+  for (int t = 0; t < 4; t++) {
+    if (t) {
+      if (f) f.close();
+      delay(200 * t);
+      f = store->open(path, "r+");
+      if (!f || !f.seek(synced)) continue;
+      sdRetries++;
+    }
+    if (f && f.write(buf, n) == n) {
+      f.flush();
+      if (f.position() == synced + n) { synced += n; return true; }
+    }
+  }
+  sdFailures++;
+  return false;
+}
