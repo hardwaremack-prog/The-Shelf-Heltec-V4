@@ -20,12 +20,8 @@ int countCategory(const String& cat) {
   for (int i = 0; i < 6; i++) if (cat == CATEGORIES[i]) {
     if (counts[i] >= 0) return counts[i];
     int n = 0;
-    File d = store->open(catDir(cat));
-    if (d && d.isDirectory()) {
-      File c = d.openNextFile();
-      while (c) { String nm = c.name(); if (!c.isDirectory() && !nm.startsWith(".")) n++; c.close(); c = d.openNextFile(); }
-      d.close();
-    }
+    std::vector<DirEnt> v; listDir(catDir(cat), v);
+    for (auto& e : v) if (!e.dir && !e.name.startsWith(".")) n++;
     return counts[i] = n;
   }
   return 0;
@@ -73,17 +69,14 @@ struct Entry { String name; uint64_t size; uint64_t mt; };
 static void listFiles(AsyncWebServerRequest* r, const String& cat) {
   std::vector<Entry> v;
   {
-    File d = store->open(catDir(cat));
-    if (d && d.isDirectory()) {
-      File c = d.openNextFile();
-      while (c) {
-        String nm = c.name();
-        if (!c.isDirectory() && !nm.startsWith(".")) v.push_back({nm, (uint64_t)c.size(), (uint64_t)c.getLastWrite() * 1000ULL});
-        c.close(); c = d.openNextFile();
-      }
-      d.close();
-    }
+    std::vector<DirEnt> all; listDir(catDir(cat), all);
+    for (auto& e : all) if (!e.dir && !e.name.startsWith(".")) v.push_back({e.name, e.size, e.mtimeMs});
   }
+  // which songs/videos/games already have art or a thumbnail: one look at each folder
+  std::vector<String> haveArt, haveThumb;
+  if (cat == "Music") haveArt = dirNames(DATA_ROOT "/album-art");
+  if (cat == "Videos") haveThumb = dirNames(DATA_ROOT "/video-thumbs");
+  else if (thumbable(cat)) haveThumb = dirNames(DATA_ROOT "/file-thumbs");
   std::sort(v.begin(), v.end(), [](const Entry& a, const Entry& b) { return a.mt > b.mt; });
 
   JsonDocument plays(&psAlloc);
@@ -112,7 +105,7 @@ static void listFiles(AsyncWebServerRequest* r, const String& cat) {
                 jsonEsc(url).c_str(), pc);
     if (cat == "Music") {
       String art = thumbPath("album-art", cat, e.name);
-      if (store->exists(art)) out->printf(",\"artUrl\":\"/data-files/album-art/%s?v=%llu\"", art.substring(art.lastIndexOf('/') + 1).c_str(), (unsigned long long)e.mt);
+      if (hasName(haveArt, art.substring(art.lastIndexOf('/') + 1))) out->printf(",\"artUrl\":\"/data-files/album-art/%s?v=%llu\"", art.substring(art.lastIndexOf('/') + 1).c_str(), (unsigned long long)e.mt);
       else out->print(",\"artUrl\":null");
       const char* a = meta[e.name]["a"] | (const char*)nullptr;
       if (a && *a) out->printf(",\"artist\":\"%s\"", jsonEsc(a).c_str()); else out->print(",\"artist\":null");
@@ -120,7 +113,7 @@ static void listFiles(AsyncWebServerRequest* r, const String& cat) {
     if (cat == "Videos" || thumbable(cat)) {
       const char* kind = cat == "Videos" ? "video-thumbs" : "file-thumbs";
       String t = thumbPath(kind, cat, e.name);
-      if (store->exists(t)) out->printf(",\"thumbUrl\":\"/data-files/%s/%s?v=%llu\"", kind, t.substring(t.lastIndexOf('/') + 1).c_str(), (unsigned long long)nowMs() / 60000);
+      if (hasName(haveThumb, t.substring(t.lastIndexOf('/') + 1))) out->printf(",\"thumbUrl\":\"/data-files/%s/%s?v=%llu\"", kind, t.substring(t.lastIndexOf('/') + 1).c_str(), (unsigned long long)nowMs() / 60000);
       else out->print(",\"thumbUrl\":null");
     }
     out->print("}");

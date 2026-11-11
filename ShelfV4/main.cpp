@@ -520,10 +520,9 @@ bool remoteBoardCommand(uint8_t cmd, const String& arg, String& out) {
       prefs.putString("mode", "home"); out = "Joining \"" + wifiSSID + "\". Restarting."; rebootLaterAt = millis() + 10000; return true;
     case 11: {
       if (!isCategory(arg)) { out = "Pick a shelf."; return true; }
-      FsGuard g;
-      File d = store->open("/" + arg);
+      std::vector<DirEnt> all; listDir("/" + arg, all);
       std::vector<String> names; int n = 0;
-      if (d) { for (File f = d.openNextFile(); f; f = d.openNextFile()) { if (!f.isDirectory()) { n++; if (names.size() < 60) names.push_back(f.name()); } f.close(); } d.close(); }
+      for (auto& e : all) if (!e.dir && !e.name.startsWith(".")) { n++; if (names.size() < 60) names.push_back(e.name); }
       std::sort(names.begin(), names.end());
       out = String(n) + (n == 1 ? " file" : " files");
       for (size_t i = 0; i < names.size(); i++) {

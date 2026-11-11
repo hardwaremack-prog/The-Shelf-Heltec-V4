@@ -36,6 +36,13 @@ bool removeAll(const String& path);
 bool copyFile(const String& from, const String& to);
 bool moveFile(const String& from, const String& to);
 String uniqueName(const String& dir, const String& name);
+// One pass over a folder straight from the FAT driver: names, sizes and dates without opening
+// each file (opening each one searches the folder again, which crawls with hundreds of songs).
+struct DirEnt { String name; uint64_t size; uint64_t mtimeMs; bool dir; };
+bool listDir(const String& path, std::vector<DirEnt>& out, size_t max = 20000);
+// Just the names in a folder, sorted, for quick "does this thumbnail exist" checks.
+std::vector<String> dirNames(const String& path);
+bool hasName(const std::vector<String>& sortedNames, const String& name);
 const char* mimeFor(const String& path);
 
 // ---------------------------------------------------------------- PSRAM-first JSON

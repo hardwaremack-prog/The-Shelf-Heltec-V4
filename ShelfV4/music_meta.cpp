@@ -110,12 +110,11 @@ void musicMetaLoop() {
   mkdirs(DATA_ROOT "/album-art");
 
   std::vector<std::pair<String, uint32_t>> files;
-  File d = store->open("/Music");
-  if (d && d.isDirectory()) {
-    File c = d.openNextFile();
-    while (c) { String n = c.name(); if (!c.isDirectory() && !n.startsWith(".")) files.push_back({n, (uint32_t)c.size()}); c.close(); c = d.openNextFile(); }
-    d.close();
+  {
+    std::vector<DirEnt> all; listDir("/Music", all);
+    for (auto& e : all) if (!e.dir && !e.name.startsWith(".")) files.push_back({e.name, (uint32_t)e.size});
   }
+  std::vector<String> haveArt = dirNames(DATA_ROOT "/album-art");
   bool changed = false;
   // forget songs that are gone
   std::vector<String> gone;
@@ -132,7 +131,7 @@ void musicMetaLoop() {
     if (!e.isNull() && (e["s"] | 0u) == f.second) continue;
     String artist, title;
     String art = String(DATA_ROOT "/album-art/") + fnvHex(String("Music/") + f.first) + ".jpg";
-    if (extOf(f.first) == "mp3") readId3("/Music/" + f.first, artist, title, store->exists(art) ? String("") : art);
+    if (extOf(f.first) == "mp3") readId3("/Music/" + f.first, artist, title, hasName(haveArt, art.substring(art.lastIndexOf('/') + 1)) ? String("") : art);
     JsonObject o = meta[f.first].to<JsonObject>();
     o["s"] = f.second;
     if (artist.length()) o["a"] = artist;

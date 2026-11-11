@@ -3,6 +3,8 @@
 #include <esp_heap_caps.h>
 #include <mbedtls/md5.h>
 #include <sys/time.h>
+#include "ff.h"
+#include <algorithm>
 
 const char* const CATEGORIES[6] = {"Pictures", "Music", "Videos", "Games", "Programs", "Books"};
 bool isCategory(const String& c) { for (auto x : CATEGORIES) if (c == x) return true; return false; }
@@ -489,3 +491,48 @@ void sendJsonArrayOfFiles(AsyncWebServerRequest* r, std::vector<String>* paths, 
   res->addHeader("Cache-Control", "no-store");
   r->send(res);
 }
+
+// ------------------------------------------------------------ fast folder listing
+// The card (or the board's flash, when there's no card) is the only FAT volume mounted, so find
+// its FatFs drive number once by looking for our own /.shelf folder.
+static char fatDrive[4] = "";
+static bool findDrive() {
+  for (int i = 0; i < FF_VOLUMES; i++) {
+    char p[16]; snprintf(p, sizeof p, "%d:/.shelf", i);
+    FF_DIR d;
+    if (f_opendir(&d, p) == FR_OK) { f_closedir(&d); snprintf(fatDrive, sizeof fatDrive, "%d:", i); return true; }
+  }
+  return false;
+}
+static uint64_t fatTimeMs(WORD fdate, WORD ftime) {
+  struct tm t = {};
+  t.tm_year = ((fdate >> 9) & 0x7F) + 80; t.tm_mon = ((fdate >> 5) & 0x0F) - 1; t.tm_mday = fdate & 0x1F;
+  t.tm_hour = (ftime >> 11) & 0x1F; t.tm_min = (ftime >> 5) & 0x3F; t.tm_sec = (ftime & 0x1F) * 2;
+  t.tm_isdst = -1;
+  return (uint64_t)mktime(&t) * 1000ULL;
+}
+bool listDir(const String& path, std::vector<DirEnt>& out, size_t max) {
+  if (!fatDrive[0] && !findDrive()) return false;
+  String fp = String(fatDrive) + (path.startsWith("/") ? path : "/" + path);
+  FF_DIR* d = (FF_DIR*)malloc(sizeof(FF_DIR));
+  FILINFO* fi = (FILINFO*)malloc(sizeof(FILINFO));
+  bool ok = d && fi && f_opendir(d, fp.c_str()) == FR_OK;
+  if (ok) {
+    while (out.size() < max) {
+      if (f_readdir(d, fi) != FR_OK || !fi->fname[0]) break;
+      if (fi->fname[0] == '.' && (!fi->fname[1] || (fi->fname[1] == '.' && !fi->fname[2]))) continue;
+      out.push_back({String(fi->fname), (uint64_t)fi->fsize, fatTimeMs(fi->fdate, fi->ftime), (fi->fattrib & AM_DIR) != 0});
+    }
+    f_closedir(d);
+  }
+  free(d); free(fi);
+  return ok;
+}
+std::vector<String> dirNames(const String& path) {
+  std::vector<DirEnt> v; listDir(path, v);
+  std::vector<String> n; n.reserve(v.size());
+  for (auto& e : v) if (!e.dir) n.push_back(e.name);
+  std::sort(n.begin(), n.end());
+  return n;
+}
+bool hasName(const std::vector<String>& n, const String& name) { return std::binary_search(n.begin(), n.end(), name); }
