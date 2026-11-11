@@ -207,6 +207,11 @@ The **Heltec V4** card at the bottom of The Shelf's sidebar opens the board's se
 
 The board talks to other Shelves the same way they talk to each other: `shelf-presence` broadcasts on UDP port 41234, a network scan that asks every address on port 8080 "are you a Shelf?", and direct HTTP for messages. That's why the board answers on **port 8080** as well as port 80. Click the board in another Shelf's Messages list to chat, or choose **Connect Shelf** to open it.
 
+## Backups
+
+- **The whole board, over USB.** On the [installer page](https://hardwaremack-prog.github.io/The-Shelf-Heltec-V4900mhzMesh/#backup), **Back up board** reads all of the board's flash (16 MB on a V4, 8 MB on a V3) into one `.bin.gz`: firmware, Wi-Fi, admin password, Coms history and any on-board files. **Restore from file** writes it back to the same board or a replacement of the same kind. Chrome or Edge on a computer.
+- **The microSD card, over Wi-Fi.** On the board's settings page, **Back up card** saves every file on the card as one `.tar.gz` (7-Zip, Windows, macOS and Linux all open it). **Restore from a backup** puts the files back on this card or a new one, skipping any that are already there. Handy for moving to a bigger or newer card.
+
 ## Good to know
 
 - **No accounts.** Anyone on your Wi-Fi can open it. Set an admin password and turn on read-only mode so only you can change things.

@@ -35,6 +35,11 @@ ol{padding-left:22px}ol li{margin-bottom:8px}
 a{color:var(--accent)}
 .shot{width:100%;border-radius:14px;border:1px solid var(--divider);display:block;margin:18px 0 0}
 ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
+.btn{font:inherit;font-weight:700;background:var(--accent);color:var(--accent-ink);border:0;border-radius:999px;padding:11px 20px;cursor:pointer;font-size:15px}
+.btn:disabled{opacity:.5;cursor:default}
+.fb-status{margin-top:12px;background:var(--surface);border:1px solid var(--divider);border-radius:14px;padding:14px 16px}
+.fb-bar{height:8px;border-radius:999px;background:var(--divider);overflow:hidden;margin-bottom:8px}
+.fb-bar div{height:100%;width:0;background:var(--accent);transition:width .2s}
 </style>
 </head>
 <body>
@@ -121,6 +126,27 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
   <img class="shot" src="screenshots/oled-all.png" alt="The board's screen on your Wi-Fi, on its own Wi-Fi, and at setup" style="image-rendering:pixelated">
 
 
+  <h2 id="backup">Back up or restore the whole board</h2>
+  <p>Save everything on the board's own flash to one compressed file: the firmware, your Wi-Fi, admin password, Coms history, and any files kept on the board when no card is fitted. Restore puts it all back exactly as it was, on this board or a replacement of the same kind. Plug in over USB-C like an install. The microSD card is backed up separately, over Wi-Fi, from the board's settings page.</p>
+  <div class="grid">
+    <div class="card">
+      <h3>Back up</h3>
+      <p class="muted">Reads the whole flash (16 MB on a V4, 8 MB on a V3) and saves a <code>.bin.gz</code>. About 3–5 minutes.</p>
+      <button class="btn" id="fbBackup">Back up board</button>
+    </div>
+    <div class="card">
+      <h3>Restore</h3>
+      <p class="muted">Pick a backup file. It replaces everything on the board's flash. The card isn't touched.</p>
+      <button class="btn" id="fbRestore">Restore from file…</button>
+      <input type="file" id="fbFile" accept=".gz,.bin" hidden>
+    </div>
+  </div>
+  <div id="fbStatus" class="fb-status" hidden>
+    <div class="fb-bar"><div id="fbFill"></div></div>
+    <div id="fbMsg" class="muted"></div>
+  </div>
+
+
   <h2>What's included</h2>
   <div class="grid">
     <div class="card"><h3>Everything that's yours</h3><ul class="ok muted">
@@ -142,5 +168,106 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
 
   <p class="muted" style="margin-top:36px">Source, wiring and build notes: <a href="https://github.com/hardwaremack-prog/The-Shelf-Heltec-V4900mhzMesh">github.com/hardwaremack-prog/The-Shelf-Heltec-V4900mhzMesh</a> &middot; The Shelf itself: <a href="https://github.com/hardwaremack-prog/the-shelf">the-shelf</a></p>
 </div>
+<script type="module">
+// Whole-board flash backup and restore over USB, with esptool-js.
+const ESPTOOL = 'https://unpkg.com/esptool-js@0.5.7/bundle.js';
+const $ = id => document.getElementById(id);
+const busy = on => { $('fbBackup').disabled = $('fbRestore').disabled = on; };
+const show = (msg, frac) => {
+  $('fbStatus').hidden = false; $('fbMsg').textContent = msg;
+  if (frac != null) $('fbFill').style.width = Math.round(frac * 100) + '%';
+};
+const mb = n => n < 1048576 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+
+if (!('serial' in navigator)) {
+  for (const id of ['fbBackup', 'fbRestore']) $(id).disabled = true;
+  show('Open this page in Chrome or Edge on a computer to back up or restore over USB.');
+}
+
+async function connect() {
+  const { ESPLoader, Transport } = await import(ESPTOOL);
+  const port = await navigator.serial.requestPort();
+  const transport = new Transport(port, true);
+  const terminal = { clean() {}, writeLine() {}, write() {} };
+  const loader = new ESPLoader({ transport, baudrate: 921600, romBaudrate: 115200, terminal });
+  show('Connecting to the board…', 0);
+  const chip = await loader.main();
+  const bytes = (await loader.getFlashSize()) * 1024;
+  if (!bytes) throw new Error("Couldn't read the board's flash size.");
+  return { loader, transport, chip, bytes };
+}
+async function done(c) {
+  try { await c.loader.after('hard_reset'); } catch {}
+  try { await c.transport.disconnect(); } catch {}
+}
+function friendly(e) {
+  const m = String(e && e.message || e);
+  if (/No port selected|NotFoundError/i.test(m)) return 'No board picked.';
+  if (/open|busy|in use/i.test(m)) return 'The port is busy. Close any other page or app using the board (another tab, Arduino, a serial monitor) and try again.';
+  return m + '. Unplug the board, plug it back in, and try again. If it keeps failing, hold BOOT while plugging it in.';
+}
+
+$('fbBackup').onclick = async () => {
+  let c; busy(true);
+  try {
+    c = await connect();
+    const t0 = Date.now();
+    const data = await c.loader.readFlash(0, c.bytes, (_p, got, total) => {
+      const s = (Date.now() - t0) / 1000, left = got ? s * (total - got) / got : 0;
+      show(`Reading ${mb(got)} of ${mb(total)}` + (got > 65536 ? ` · about ${Math.ceil(left / 60)} min left` : ''), got / total);
+    });
+    await done(c); c = null;
+    show('Compressing…', 1);
+    const gz = await new Response(new Blob([data]).stream().pipeThrough(new CompressionStream('gzip'))).blob();
+    const kind = data.length >= 16 * 1048576 ? 'v4' : data.length >= 8 * 1048576 ? 'v3' : 'board';
+    const name = `shelf-${kind}-flash-${new Date().toISOString().slice(0, 10)}.bin.gz`;
+    if (window.showSaveFilePicker) {
+      try {
+        const h = await showSaveFilePicker({ suggestedName: name, types: [{ description: 'Board backup', accept: { 'application/gzip': ['.gz'] } }] });
+        const w = await h.createWritable(); await w.write(gz); await w.close();
+      } catch (e) { if (e.name === 'AbortError') { show('Backup read but not saved.'); return; } throw e; }
+    } else {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(gz); a.download = name; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    }
+    show(`Saved ${name}: ${mb(data.length)} of flash in ${mb(gz.size)}. The board has restarted.`, 1);
+  } catch (e) { show(friendly(e)); }
+  finally { if (c) await done(c); busy(false); }
+};
+
+$('fbRestore').onclick = () => $('fbFile').click();
+$('fbFile').onchange = async () => {
+  const f = $('fbFile').files[0]; $('fbFile').value = '';
+  if (!f) return;
+  let c; busy(true);
+  try {
+    show('Opening ' + f.name + '…', 0);
+    let data = new Uint8Array(await f.arrayBuffer());
+    if (data[0] === 0x1f && data[1] === 0x8b) data = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+    if (data.length < 1048576 || data.length % 4096) throw new Error("That file isn't a whole-board backup");
+    if (!confirmRestore(f.name, data.length)) { show('Restore cancelled.'); return; }
+    c = await connect();
+    if (data.length > c.bytes) throw new Error(`That backup is ${mb(data.length)} but this board's flash is ${mb(c.bytes)}. Use a backup from the same kind of board`);
+    let bin = '';
+    for (let i = 0; i < data.length; i += 0x8000) bin += String.fromCharCode.apply(null, data.subarray(i, i + 0x8000));
+    const t0 = Date.now();
+    await c.loader.writeFlash({
+      fileArray: [{ data: bin, address: 0 }],
+      flashSize: 'keep', flashMode: 'keep', flashFreq: 'keep',
+      eraseAll: false, compress: true,
+      reportProgress: (_i, w, total) => {
+        const s = (Date.now() - t0) / 1000, left = w ? s * (total - w) / w : 0;
+        show(`Writing ${Math.round(w / total * 100)}%` + (w > 65536 ? ` · about ${Math.ceil(left / 60)} min left` : ''), w / total);
+      },
+    });
+    await done(c); c = null;
+    show(`Restored ${f.name}. The board has restarted.`, 1);
+  } catch (e) { show(friendly(e)); }
+  finally { if (c) await done(c); busy(false); }
+};
+function confirmRestore(name, n) {
+  return window.confirm(`Restore ${name} (${mb(n)})?\n\nThis replaces everything on the board's flash: firmware, Wi-Fi, admin password and on-board files. The microSD card isn't touched.`);
+}
+</script>
 </body>
 </html>
