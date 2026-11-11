@@ -11,8 +11,8 @@ topy=by+28; boty=by+bh-28
 sx,sy,sw,sh=360,60,480,170
 sdx=lambda k: sx+70+k*68
 o=[f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif">',f'<rect width="{W}" height="{H}" fill="#0b0f14"/>',
- '<text x="40" y="44" fill="#fff" font-size="28" font-weight="700">microSD card → The Shelf on Heltec V4</text>',
- '<text x="40" y="74" fill="#7f93a8" font-size="16">Same wiring as Heltec Shelf Lite · works on the V4 and V4-R8</text>']
+ '<text x="40" y="44" fill="#fff" font-size="28" font-weight="700">microSD card → The Shelf on Heltec V4 &amp; V3</text>',
+ '<text x="40" y="74" fill="#7f93a8" font-size="16">Same wiring as Heltec Shelf Lite · same pins on the V4, V4-R8 and V3</text>']
 o.append(f'<rect x="{sx}" y="{sy+40}" width="{sw}" height="{sh}" rx="14" fill="#1d4f8f" stroke="#3a78c2" stroke-width="3"/>')
 o.append(f'<text x="{sx+16}" y="{sy+66}" fill="#a9c7ee" font-size="14">3.3 V SPI module (pin order as printed on it)</text>')
 o.append(f'<rect x="{sx+120}" y="{sy+70}" width="240" height="110" rx="8" fill="#c9ced6" stroke="#8e96a2" stroke-width="3"/>')
@@ -27,7 +27,7 @@ o.append(f'<rect x="{bx-34}" y="{by+bh/2-38}" width="46" height="76" rx="10" fil
 o.append(f'<text x="{bx-11}" y="{by+bh/2+60}" fill="#7f93a8" font-size="14" text-anchor="middle">USB-C</text>')
 o.append(f'<rect x="{bx+250}" y="{by+95}" width="300" height="150" rx="6" fill="#05070a" stroke="#2b3a4b" stroke-width="3"/>')
 o.append(f'<text x="{bx+400}" y="{by+165}" fill="#7fe3ff" font-size="20" font-weight="700" text-anchor="middle">OLED</text>')
-o.append(f'<text x="{bx+400}" y="{by+192}" fill="#7f93a8" font-size="15" text-anchor="middle">Heltec WiFi LoRa 32 V4</text>')
+o.append(f'<text x="{bx+400}" y="{by+192}" fill="#7f93a8" font-size="15" text-anchor="middle">Heltec WiFi LoRa 32 V4 / V3</text>')
 o.append(f'<text x="{bx+30}" y="{topy+46}" fill="#7f93a8" font-size="13">J3</text>')
 o.append(f'<text x="{bx+30}" y="{boty-34}" fill="#7f93a8" font-size="13">J2</text>')
 used={(h,i):c for _,h,i,c in SD}
@@ -54,7 +54,8 @@ for lab,hdr,idx,col in SD:
     o.append(f'<text x="{x+30}" y="{ly-6}" fill="#d7e3ee" font-size="16" font-weight="600">{t}</text>')
     x+=30+len(t)*8.8+26
 for n,l in enumerate(['CS and MISO go to the J3 row (GPIO 4, 6). CLK and MOSI go to the J2 row on the other edge (GPIO 47, 48).',
-                      'Module pins in silkscreen order: 3v3 · CS · MOSI · CLK · MISO · GND (square pad = 3v3). CLK is the SPI clock (SCK).']):
+                      'Module pins in silkscreen order: 3v3 · CS · MOSI · CLK · MISO · GND (square pad = 3v3). CLK is the SPI clock (SCK).',
+                      'This module has no voltage regulator: power it from 3V3 only, never 5V.']):
     o.append(f'<text x="40" y="{ly+28+n*20}" fill="#7f93a8" font-size="14">{l}</text>')
 o.append('</svg>')
 open('sd-wiring-shelf-v4.svg','w').write('\n'.join(o))

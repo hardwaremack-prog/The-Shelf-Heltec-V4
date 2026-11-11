@@ -118,6 +118,34 @@ void recordVisitor(const String& ip);
 int  countCategory(const String& cat);
 void invalidateCounts();
 
+// ---------------------------------------------------------------- admin password, read-only, remote admin
+void adminBegin();
+bool handleAdminApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);
+bool adminIsSet();
+bool readOnlyOn();
+void setReadOnly(bool on);
+void adminClear();
+bool canWrite(AsyncWebServerRequest* r);
+bool allowedWhenReadOnly(const String& url, WebRequestMethod m);
+void sendReadOnly(AsyncWebServerRequest* r);
+uint32_t meshNodeId();
+void adminDeriveKey(const String& password, uint32_t node, uint8_t out[32]);
+void hmac8(const uint8_t key[32], const uint8_t* data, size_t len, uint8_t out[8]);
+const uint8_t* adminKey();
+bool adminLockedOut();
+void adminNoteFail();
+void adminNoteOk();
+uint32_t adminLastCounter(uint32_t from);
+void adminSetCounter(uint32_t from, uint32_t c);
+uint32_t adminNextOwnCounter(uint32_t atLeast);
+// main.cpp: what a remote admin sees and can do
+String remoteStatusJson();
+bool remoteBoardCommand(uint8_t cmd, const String& arg, String& out);
+int batteryPercentNow();
+void screenWake();
+void screenSleep();
+bool screenIsOn();
+
 // ---------------------------------------------------------------- device / Wi-Fi
 extern String hostName, apName, wifiSSID;
 extern bool apActive, staOK;

@@ -83,17 +83,17 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
 
   <h2>2. Wire a microSD card</h2>
   <p>Use a 3.3 V SPI microSD module (the same wiring as Heltec Shelf Lite, and the same pins on the V3). With no card fitted, The Shelf uses about 10 MB of a V4's own flash, or about 4 MB of a V3's.</p>
-  <img src="sd-wiring-shelf-v4.png" alt="microSD wiring diagram: GND to GND, VCC to 3V3, CS to GPIO 4, MISO to GPIO 6, CLK to GPIO 47, MOSI to GPIO 48" style="width:100%;max-width:900px;border-radius:10px;margin:8px 0 14px">
+  <img src="sd-wiring-shelf-v4.png" alt="microSD wiring diagram: GND to GND, 3v3 to 3V3, CS to GPIO 4, MISO to GPIO 6, CLK to GPIO 47, MOSI to GPIO 48" style="width:100%;max-width:900px;border-radius:10px;margin:8px 0 14px">
   <table>
     <tr><th>Module pin</th><th>Heltec V4 / V3 pin</th></tr>
-    <tr><td>VCC</td><td><b>3V3</b></td></tr>
+    <tr><td>3v3 (VCC)</td><td><b>3V3</b></td></tr>
     <tr><td>GND</td><td>GND</td></tr>
     <tr><td>CS</td><td>GPIO 4</td></tr>
     <tr><td>MISO</td><td>GPIO 6</td></tr>
     <tr><td>CLK (SCK)</td><td>GPIO 47</td></tr>
     <tr><td>MOSI</td><td>GPIO 48</td></tr>
   </table>
-  <p class="muted" style="margin-top:10px">GPIO 47 and 48 are on the other header row from 4 and 6. Go by the labels on the board. Use a FAT32 card; 32 GB cards come that way.</p>
+  <p class="muted" style="margin-top:10px">Made for the small 6-pin module labelled 3v3 · CS · MOSI · CLK · MISO · GND. It has no regulator: 3V3 only, never 5V. GPIO 47 and 48 are on the other header row from 4 and 6. Go by the labels on the board. Use a FAT32 card; 32 GB cards come that way.</p>
 
   <h2>3. Connect it to your Wi-Fi</h2>
   <ol>
@@ -109,8 +109,13 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
   <h2>900MHz Coms</h2>
   <p>A <b>900MHz Coms</b> tab lets your boards text each other over the V4's LoRa radio, with no Wi-Fi or internet needed. Switch it on and you see the message log and can send to everyone. V3 and V4 boards share the same mesh. Every board with Coms on also relays for the others, with no hop limit, and a board that joins late is caught up on the last 12 hours by its neighbors. <b>Fit the LoRa antenna before switching it on.</b></p>
   <img class="shot" src="screenshots/coms-desktop.png" alt="900MHz Coms tab with the message log">
+  <h2>Manage boards over 900MHz</h2>
+  <p>The Coms tab lists every board on the mesh. Click one, type its admin password, and connect. You can check its battery, Wi-Fi and storage, turn read-only on or off, wake or sleep its screen, set its power, list its files, or restart it, all over the radio. Commands are signed with the board's password (never sent) rather than encrypted, as amateur rules require.</p>
+  <img class="shot" src="screenshots/coms-devices.png" alt="Boards on the mesh">
+  <h2>Read-only mode</h2>
+  <p>Set an admin password on the board's settings page and switch on <b>read-only</b>: everyone can browse, play and chat, but only someone with the password can change things. A switch in the sidebar unlocks write mode for 8 hours. Forgot the password? Hold PRG for 12 seconds.</p>
   <h2>The board's screen</h2>
-  <p>The address to open is always on the bottom line, and the battery meter is in the top corner. New Coms messages show for 15 seconds.</p>
+  <p>The address to open is always on the bottom line, and the battery meter is in the top corner. The screen sleeps after 5 minutes; press PRG to wake it. New Coms messages show for 15 seconds.</p>
   <img class="shot" src="screenshots/oled-all.png" alt="The board's screen on your Wi-Fi, on its own Wi-Fi, and at setup" style="image-rendering:pixelated">
 
 
@@ -129,7 +134,7 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
       <li>Remote desktop (VNC)</li>
       <li>Looking up album art online, editing song tags, Standardize names, Remove duplicates</li>
       <li>Big Transfer, backup zips and spreadsheet import</li>
-      <li>Accounts and passwords: on the board, everyone on your Wi-Fi can use it</li>
+      <li>User accounts. The board has one admin password and a read-only mode instead</li>
     </ul></div>
   </div>
 

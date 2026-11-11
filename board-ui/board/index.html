@@ -41,6 +41,9 @@ button.bad{color:var(--coral)}
 .stack{display:flex;flex-direction:column;gap:8px}
 .stack input{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--divider);border-radius:12px;padding:9px 12px}
 label.l{font-size:13px;color:var(--muted)}
+.lockbar{display:none;background:var(--surface);border:1px solid var(--accent);border-radius:14px;padding:12px 14px;margin-bottom:16px}
+.lockbar b{color:var(--accent)}
+.err{color:var(--coral)}
 </style>
 </head>
 <body>
@@ -49,10 +52,37 @@ label.l{font-size:13px;color:var(--muted)}
   <p class="sub">on a Heltec V4 &middot; board settings</p>
   <div class="banner" id="setupBanner">Setup mode: pick your home Wi-Fi below so everyone in the house can use this Shelf.</div>
 
+  <div class="lockbar" id="lockbar"><b>&#128274; Read-only</b> &middot; enter the admin password to change this board's settings.
+    <div class="field" style="margin-top:10px"><input id="unlockPw" type="password" placeholder="Admin password" autocomplete="current-password"><button class="pri" onclick="unlock()">Unlock</button></div>
+    <div class="msg" id="unlockMsg"></div></div>
+
   <a class="btn pri" href="/" id="openShelf">Open The Shelf &rarr;</a>
 
   <h2>This board</h2>
   <div class="card" id="info"><div class="empty">Loading&hellip;</div></div>
+
+  <h2>Admin password &amp; read-only</h2>
+  <div class="card" id="adm"><div class="empty">Loading&hellip;</div></div>
+  <div id="admSet" class="panel" style="display:none">
+    <p class="tip">Set an admin password to use read-only mode, and to manage this board from another Shelf board over 900MHz Coms. Use the same one on all your boards if you like.</p>
+    <div class="stack" style="margin-top:8px">
+      <input id="newPw" type="password" placeholder="Admin password (6+ characters)" autocomplete="new-password">
+      <input id="newPw2" type="password" placeholder="Type it again" autocomplete="new-password">
+    </div>
+    <div class="btns"><button class="pri" onclick="setPw()">Set admin password</button></div>
+  </div>
+  <div id="admOn" class="panel" style="display:none">
+    <div class="seg"><button id="roOn" onclick="setRO(true)">Read-only</button><button id="roOff" onclick="setRO(false)">Anyone can make changes</button></div>
+    <p class="tip">Read-only: everyone on the Wi-Fi can look, play music and videos, and chat, but nothing can be uploaded, changed or deleted until someone unlocks write mode with the admin password (the switch in The Shelf's sidebar). Unlocking lasts 8 hours in that browser.</p>
+    <details style="margin-top:10px"><summary class="tip" style="cursor:pointer;display:inline">Change or remove the admin password</summary>
+      <div class="stack" style="margin-top:8px">
+        <input id="curPw" type="password" placeholder="Current admin password" autocomplete="current-password">
+        <input id="chgPw" type="password" placeholder="New admin password (6+ characters)" autocomplete="new-password">
+      </div>
+      <div class="btns"><button class="pri" onclick="chgPw()">Change it</button><button class="bad" onclick="rmPw()">Remove the admin password</button></div>
+    </details>
+  </div>
+  <div class="msg" id="aMsg"></div>
 
   <h2>Wi-Fi</h2>
   <div class="card"><div class="kv"><span>Right now</span><span id="wNow">&mdash;</span></div></div>
@@ -88,7 +118,8 @@ label.l{font-size:13px;color:var(--muted)}
   <p class="tip" id="storeTip"></p>
 
   <div class="btns" style="margin-top:24px"><button onclick="reboot()">Restart the board</button></div>
-  <p class="tip">Hold the board's PRG button for 6 seconds to forget all Wi-Fi settings and go back to setup mode.</p>
+  <p class="tip">The screen sleeps after 5 minutes. Press the board's PRG button to wake it.</p>
+  <p class="tip">Hold PRG for 6 seconds and let go to forget the Wi-Fi and go back to setup mode. Keep holding to 12 seconds to clear a forgotten admin password and turn read-only off.</p>
 </div>
 <script>
 const $=s=>document.querySelector(s);
@@ -102,6 +133,24 @@ async function useOwn(){const ssid=$('#apSsid').value.trim(),pass=$('#apPass').v
   if(!pass&&!confirm('No password means anyone nearby can join and see The Shelf. Use an open network?'))return;
   try{await post('/api/board/hotspot',{ssid,pass});$('#wMsg').innerHTML=`Switching to its own Wi-Fi… Join <b>${esc(ssid)}</b>${pass?' with your password':''}, then open <b>http://192.168.4.1</b>.`}catch(e){$('#wMsg').textContent=e.message}}
 async function useHome(){try{await post('/api/board/home');$('#wMsg').textContent='Switching back to '+I.homeSsid+'… Rejoin it on your phone, then open http://'+I.host+'.local.'}catch(e){$('#wMsg').textContent=e.message}}
+let A={};
+async function loadAdmin(){try{A=await fetch('/api/admin/status').then(r=>r.json())}catch(e){return}
+  $('#adm').innerHTML=[['Admin password',A.adminSet?'Set':'Not set'],['Mode',A.readOnly?'Read-only':'Anyone on the Wi-Fi can make changes'],['This browser',!A.readOnly?'Can make changes':A.unlocked?'Unlocked for changes':'Locked']]
+    .map(r=>`<div class="kv"><span>${r[0]}</span><span>${esc(r[1])}</span></div>`).join('')+(A.unlocked?'<div class="kv"><span></span><span><button onclick="lockNow()">Lock this browser</button></span></div>':'');
+  $('#admSet').style.display=A.adminSet?'none':'block';$('#admOn').style.display=A.adminSet?'block':'none';
+  $('#roOn').classList.toggle('on',!!A.readOnly);$('#roOff').classList.toggle('on',!A.readOnly);
+  $('#lockbar').style.display=A.canWrite?'none':'block'}
+function aMsg(t,bad){$('#aMsg').textContent=t;$('#aMsg').className='msg'+(bad?' err':'')}
+async function setPw(){const a=$('#newPw').value,b=$('#newPw2').value;if(a.length<6)return aMsg('Use at least 6 characters.',1);if(a!==b)return aMsg('Those two don\'t match.',1);
+  try{await post('/api/admin/password',{newPassword:a});$('#newPw').value=$('#newPw2').value='';aMsg('Admin password set.');loadAdmin()}catch(e){aMsg(e.message,1)}}
+async function chgPw(){try{await post('/api/admin/password',{password:$('#curPw').value,newPassword:$('#chgPw').value});$('#curPw').value=$('#chgPw').value='';aMsg('Admin password changed.');loadAdmin()}catch(e){aMsg(e.message,1)}}
+async function rmPw(){if(!confirm('Remove the admin password? Read-only mode turns off, and other boards can no longer manage this one over Coms.'))return;
+  try{await post('/api/admin/remove',{password:$('#curPw').value});$('#curPw').value='';aMsg('Admin password removed.');loadAdmin()}catch(e){aMsg(e.message,1)}}
+async function setRO(on){let pw='';if(!on&&!A.unlocked){pw=prompt('Admin password to turn read-only off');if(pw===null)return}
+  try{await post('/api/admin/readonly',{on,password:pw});aMsg(on?'Read-only is on.':'Read-only is off.');loadAdmin()}catch(e){aMsg(e.message,1)}}
+async function unlock(){try{await post('/api/admin/unlock',{password:$('#unlockPw').value});$('#unlockPw').value='';$('#unlockMsg').textContent='';loadAdmin()}catch(e){$('#unlockMsg').textContent=e.message;$('#unlockMsg').className='msg err'}}
+async function lockNow(){await post('/api/admin/lock');loadAdmin()}
+$('#unlockPw').addEventListener('keydown',e=>{if(e.key==='Enter')unlock()});
 async function post(u,d){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d||{})});let j={};try{j=await r.json()}catch(e){}if(!r.ok)throw new Error(j.error||'Something went wrong');return j}
 async function load(){try{I=await fetch('/api/board/info').then(r=>r.json())}catch(e){return}
   const up=I.uptime>86400?Math.floor(I.uptime/86400)+'d '+Math.floor(I.uptime%86400/3600)+'h':Math.floor(I.uptime/3600)+'h '+Math.floor(I.uptime%3600/60)+'m';
@@ -133,7 +182,7 @@ $('#nets').addEventListener('click',async e=>{const b=e.target.closest('.net');i
 async function forget(){if(!confirm('Forget the Wi-Fi? The board restarts in setup mode ('+I.apName+').'))return;try{await post('/api/board/wifi/forget');$('#wMsg').textContent='Restarting in setup mode…'}catch(e){$('#wMsg').textContent=e.message}}
 async function saveHost(){try{const j=await post('/api/board/settings',{host:$('#host').value});$('#wMsg').textContent=j.restart?'Renamed. Restarting…':'Saved.'}catch(e){$('#wMsg').textContent=e.message}}
 async function reboot(){if(!confirm('Restart the board?'))return;await post('/api/board/reboot');$('#wMsg').textContent='Restarting… give it 15 seconds.'}
-load();setInterval(load,15000);
+load();loadAdmin();setInterval(()=>{load();loadAdmin()},15000);
 </script>
 </body>
 </html>

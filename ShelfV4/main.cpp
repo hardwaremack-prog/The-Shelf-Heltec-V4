@@ -16,6 +16,7 @@
 #include <U8g2lib.h>
 #include <esp_heap_caps.h>
 #include <sys/time.h>
+#include <algorithm>
 #include <esp_netif.h>
 #include <dhcpserver/dhcpserver.h>
 
@@ -409,16 +410,20 @@ class ShelfHandler : public AsyncWebHandler {
   }
 
   void handleUpload(AsyncWebServerRequest* r, const String& fn, size_t index, uint8_t* data, size_t len, bool final) override {
+    if (!canWrite(r)) return;               // read-only: handleRequest answers 403
     handleUploadPart(r, fn, index, data, len, final);
   }
 
   void handleRequest(AsyncWebServerRequest* r) override {
-    lastActivity = millis();
+    // (web requests no longer keep the screen awake: an open page polls all night)
     const String& url = r->url();
     WebRequestMethod m = (WebRequestMethod)r->method();
     if (m == HTTP_OPTIONS) { r->send(204); return; }
     Body* b = bodyOf(r);
     if (b && b->tooBig) { sendErr(r, 413, "That's too big for the board to take in one go."); cleanup(r); return; }
+    if (handleAdminApi(r, url, m)) { cleanup(r); return; }
+    // read-only mode: only looking, playing and chatting get through until write mode is unlocked
+    if (!allowedWhenReadOnly(url, m) && !canWrite(r)) { sendReadOnly(r); cleanup(r); return; }
 
     if (url == "/" || url == "/index.html") {
       if (firstSetup) { r->redirect("/board/"); return; }
@@ -455,25 +460,80 @@ static void setupServer(AsyncWebServer& s) {
 }
 
 // ------------------------------------------------------------ button
-// short press: wake the screen. hold 6 s: forget Wi-Fi.
+// short press: wake the screen (it sleeps after 5 minutes).
+// hold 6 s, then let go: forget Wi-Fi.  keep holding to 12 s: clear the admin password.
 static uint32_t btnDownAt = 0; static bool btnDown = false;
 static void handleButton() {
   bool down = digitalRead(PIN_BUTTON) == LOW; uint32_t now = millis();
   if (down && !btnDown) { btnDown = true; btnDownAt = now; }
-  if (down && now - btnDownAt > 1500) {
+  uint32_t held = now - btnDownAt;
+  if (down && held > 1500) {
     if (!screenOn) { screenOn = true; oled.setPowerSave(0); }
-    int left = 6 - (int)((now - btnDownAt) / 1000);
-    if (left <= 0) {
-      oledMsg("Wi-Fi reset", "Forgetting network...", "Restarting in setup", "mode");
-      prefs.remove("ssid"); prefs.remove("pass"); delay(1200); ESP.restart();
+    char b[32];
+    if (held < 6000) {
+      snprintf(b, sizeof b, "Keep holding %d s", 6 - (int)(held / 1000));
+      oledMsg("Forget Wi-Fi?", b, "Let go to cancel");
+    } else if (held < 12000) {
+      snprintf(b, sizeof b, "Hold %d s: clear admin", 12 - (int)(held / 1000));
+      oledMsg("Let go: forget Wi-Fi", b, "password + read-only");
+    } else {
+      oledMsg("Admin reset", "Admin password cleared", "Read-only is off", "Restarting...");
+      adminClear(); delay(1500); ESP.restart();
     }
-    char b[32]; snprintf(b, sizeof b, "Keep holding %d s", left);
-    oledMsg("Forget Wi-Fi?", b, "Let go to cancel");
   }
   if (!down && btnDown) {
     btnDown = false; lastActivity = now;
-    if (now - btnDownAt < 800 && !screenOn) { screenOn = true; oled.setPowerSave(0); }
+    if (held >= 6000 && held < 12000) {
+      oledMsg("Wi-Fi reset", "Forgetting network...", "Restarting in setup", "mode");
+      prefs.remove("ssid"); prefs.remove("pass"); prefs.remove("mode"); delay(1200); ESP.restart();
+    }
+    if (held < 800 && !screenOn) { screenOn = true; oled.setPowerSave(0); }
   }
+}
+
+// ------------------------------------------------------------ remote admin (900MHz Coms)
+void screenWake() { lastActivity = millis(); if (!screenOn) { screenOn = true; oled.setPowerSave(0); } }
+void screenSleep() { if (screenOn) { screenOn = false; oled.setPowerSave(1); } }
+bool screenIsOn() { return screenOn; }
+int batteryPercentNow() { return batteryPercent(); }
+static uint32_t rebootLaterAt = 0;
+
+String remoteStatusJson() {
+  String w = staOK ? "home: " + WiFi.SSID() : apActive ? (firstSetup ? String("setup: ") : String("own: ")) + ownSSID : String("connecting");
+  // has to fit in one radio packet with the Coms fields (220 bytes), so names are cut short
+  return String("{\"n\":\"") + jsonEsc(hostName.substring(0, 20)) + "\",\"b\":\"" BOARD_SHORT "\",\"fw\":\"" FW_VERSION "\",\"bat\":" + batteryPercent() +
+         ",\"up\":" + (millis() / 1000) + ",\"ro\":" + (readOnlyOn() ? 1 : 0) + ",\"w\":\"" + jsonEsc(w.substring(0, 24)) + "\",\"ip\":\"" + currentIP() +
+         "\",\"cl\":" + (apActive ? WiFi.softAPgetStationNum() : 0) + ",\"st\":\"" + (onSD ? "SD" : "FL") + "\",\"fm\":" + (uint32_t)((storeTotal - storeUsed) / 1000000ULL) +
+         ",\"scr\":" + (screenOn ? 1 : 0) + "}";
+}
+
+// cmd: 2 read-only, 3 restart, 4 screen, 7 own Wi-Fi, 8 home Wi-Fi, 11 list a shelf
+bool remoteBoardCommand(uint8_t cmd, const String& arg, String& out) {
+  switch (cmd) {
+    case 2: setReadOnly(arg == "1"); out = remoteStatusJson(); return true;
+    case 3: out = "Restarting now. It's back on the mesh in about 20 seconds."; rebootLaterAt = millis() + 10000; return true;
+    case 4: if (arg == "1") screenWake(); else screenSleep(); out = remoteStatusJson(); return true;
+    case 7: prefs.putString("mode", "hotspot"); out = "Switching to its own Wi-Fi \"" + ownSSID + "\". Restarting."; rebootLaterAt = millis() + 10000; return true;
+    case 8:
+      if (!wifiSSID.length()) { out = "It has no home Wi-Fi saved. Pick one on its settings page."; return true; }
+      prefs.putString("mode", "home"); out = "Joining \"" + wifiSSID + "\". Restarting."; rebootLaterAt = millis() + 10000; return true;
+    case 11: {
+      if (!isCategory(arg)) { out = "Pick a shelf."; return true; }
+      FsGuard g;
+      File d = store->open("/" + arg);
+      std::vector<String> names; int n = 0;
+      if (d) { for (File f = d.openNextFile(); f; f = d.openNextFile()) { if (!f.isDirectory()) { n++; if (names.size() < 60) names.push_back(f.name()); } f.close(); } d.close(); }
+      std::sort(names.begin(), names.end());
+      out = String(n) + (n == 1 ? " file" : " files");
+      for (size_t i = 0; i < names.size(); i++) {
+        String nm = names[i]; int sl = nm.lastIndexOf('/'); if (sl >= 0) nm = nm.substring(sl + 1);
+        if (out.length() + nm.length() + 3 > 200) { out += ", ..."; break; }
+        out += (i ? ", " : ": ") + nm;
+      }
+      return true;
+    }
+  }
+  return false;
 }
 
 // ------------------------------------------------------------ setup / loop
@@ -499,6 +559,7 @@ void setup() {
   ownSSID = prefs.getString("apssid", apName);
   ownPass = prefs.getString("appass", AP_PASS);
   firstSetup = !hotspotMode && !wifiSSID.length();
+  adminBegin();
 
   if (!LittleFS.begin(false, "/www", 10, "www")) oledMsg("Web app missing", "Re-flash from the", "installer page");
   setupStorage();
@@ -535,6 +596,7 @@ void loop() {
   if (staOK && WiFi.status() != WL_CONNECTED) staOK = false;
   if (apActive && apOffAt && now > apOffAt && staOK && !hotspotMode) { stopAP(); apOffAt = 0; }
   if (rebootSoon) { rebootSoon = false; rebootAt = now + 1500; }
+  if (rebootLaterAt && (int32_t)(now - rebootLaterAt) >= 0) { rebootLaterAt = 0; rebootAt = now; }
   if (rebootAt && now > rebootAt) { oledMsg("Restarting..."); delay(200); ESP.restart(); }
 
   handleButton();

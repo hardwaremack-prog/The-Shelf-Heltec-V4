@@ -16,8 +16,9 @@
 | Home: bulletin board with notes, pasted pictures and videos, quick links, weather | Remote desktop (VNC) |
 | Notes, Docs, Sheets, Slides, Draw | Online album-art lookup, tag editing, Standardize names, Remove duplicates, Export |
 | Tidy Suite | Big Transfer, backup/restore zips, spreadsheet import |
-| **Messages**: finds and chats with your other Shelves (PCs, Pis, other boards), pictures included | Accounts and passwords |
-| **900MHz Coms**: LoRa text mesh between boards, every board a relay, 12-hour catch-up | |
+| **Messages**: finds and chats with your other Shelves (PCs, Pis, other boards), pictures included | User accounts (the board has one admin password instead) |
+| **900MHz Coms**: LoRa text mesh between boards, every board a relay, 12-hour catch-up, list of boards and remote admin | |
+| **Read-only mode** with an admin password to unlock changes | |
 
 The buttons for those computer-only features are hidden on the board, and the AI and Big Transfer tabs are left out.
 
@@ -33,7 +34,7 @@ The buttons for those computer-only features are hidden on the board, and the AI
 
 | microSD module | Heltec V4 / V3 |
 |---|---|
-| VCC | **3V3** |
+| 3v3 (VCC) | **3V3** |
 | GND | GND |
 | CS | GPIO 4 |
 | MISO | GPIO 6 |
@@ -41,6 +42,8 @@ The buttons for those computer-only features are hidden on the board, and the AI
 | MOSI | GPIO 48 |
 
 The V3 uses the same pins: GPIO 4 and 6 are on one header row, 47 and 48 on the other.
+
+The diagram matches the small blue 6-pin module whose pins read **3v3 · CS · MOSI · CLK · MISO · GND** (square pad = 3v3). That module has no voltage regulator, so it must go to **3V3**, never 5V.
 
 With no card, The Shelf keeps files in the board's own flash: about 10 MB on a V4, about 4 MB on a V3. The screen shows **SD** or **FLASH** in the corner.
 
@@ -78,6 +81,8 @@ A **900MHz Coms** tab in The Shelf's Tools lets Shelf boards (V4 and V3) text ea
 - **Catch-up.** When a board turns Coms on, it asks its neighbors for the last 12 hours. One of them replays what it's missing (up to 60 messages), marked "caught up", with their original times.
 - **Display.** The tab shows who's in range with signal strength, plus counts of heard, relayed and caught-up messages. The OLED shows an antenna icon while Coms is on, and new messages for 15 seconds.
 - **Settings.** You can set your name on the mesh and the transmit power. On a V4: Low ~11 dBm, Normal ~20 dBm (default), or High ~27 dBm, through its front-end amplifier. On a V3: ~11, ~17 or ~22 dBm.
+- **Boards on the mesh.** Every board says hello when Coms comes on and every 15 minutes, so the tab lists every board on the mesh, even ones several hops away: its name, V3 or V4, how many hops, battery, and when it was last heard. **Refresh** asks them all to answer now.
+- **Manage a board remotely.** Click a board in the list, type its admin password, and **Connect**. See [Remote admin over 900MHz](#remote-admin-over-900mhz).
 - **Air settings.** 915.0 MHz, 125 kHz, SF9, CR 4/5, private sync word 0x12. This is its own channel, separate from Meshtastic, which it doesn't talk to.
 
 **Fit the LoRa antenna before switching Coms on.** Transmitting without an antenna can damage the radio. The log is kept on the card in `.shelf/data/coms-log.jsonl`.
@@ -101,6 +106,49 @@ When a board turns Coms on (or powers up with it on), it broadcasts a short "cat
 4. Each replay carries the message's age rather than a clock time, so it shows at the right time even if the boards' clocks disagree. Replays are marked **caught up** and aren't relayed further.
 
 The request goes out again after 2 minutes in case nobody heard the first one.
+
+### Remote admin over 900MHz
+
+Manage any board on the mesh from any other, with no Wi-Fi or internet between them, all night if you like.
+
+![Boards on the mesh](docs/screenshots/coms-devices.png)
+
+<p align="center"><img src="docs/screenshots/remote-admin.png" width="520" alt="Managing the Truck board over 900MHz"></p>
+
+1. On the board you want to manage, set an **admin password** on its settings page (`/board/`).
+2. On any other board's Shelf, open **900MHz Coms** and click that board under **Boards on the mesh**. Boards without an admin password show **No password**.
+3. Type its admin password and press **Connect**. Your board sends a request over the radio, and the panel fills in when the answer comes back: a few seconds when it's direct, a few more for each hop.
+
+From the panel you can see its battery, uptime, Wi-Fi, address, storage, mode and screen, and you can:
+- Turn **read-only** on or off
+- **Wake** or **sleep** its screen
+- Set its **transmit power** and **receipts**, and rename it on the mesh
+- **List the files** in one of its shelves
+- **Ping** it to check the path
+- Switch it to **its own Wi-Fi** or back to **home Wi-Fi**
+- **Restart** it
+
+How it's kept safe:
+- **Signed, not encrypted.** Commands and replies go over the air readable, as the amateur rules require, so anyone listening on 915 MHz can see them. Each one carries a signature (HMAC-SHA256) made from the target board's admin password. The password itself is never sent, and a board only obeys commands signed with its own password.
+- **No replays.** Every command carries a number that has to be higher than the last one that board accepted, so a recorded command can't be played back later.
+- **Wrong passwords.** After 5 wrong passwords in a row, a board refuses everything for 5 minutes.
+
+Every board relays these requests and replies the same way as messages, so you can reach a board as far away as the mesh goes.
+
+### Admin password and read-only mode
+
+On the board's settings page, set an **admin password**. Then you can switch The Shelf to **read-only**:
+
+- Everyone on the Wi-Fi can still browse, play music and videos, play games, read books, and chat in Messages and Coms.
+- Nobody can upload, edit, rename, move or delete anything, or change the board's settings.
+- A **Read-only** switch shows in The Shelf's sidebar. Tap it and enter the admin password to unlock **Write mode** in that browser for 8 hours. Tap it again to lock.
+- If someone tries to change something while it's locked, the password box pops up for them.
+
+<p align="center"><img src="docs/screenshots/read-only-switch.png" width="240" alt="Read-only switch in the sidebar"> &nbsp; <img src="docs/screenshots/read-only-unlock.png" width="520" alt="Unlock prompt"></p>
+
+You can turn read-only on or off remotely over 900MHz Coms too. The password isn't stored on the board, only a key made from it.
+
+**Forgot it?** Hold the board's **PRG** button for 12 seconds. That clears the admin password and turns read-only off. You need the board in your hand to do it.
 
 #### Turned off
 
@@ -128,9 +176,11 @@ If the board is set to join your home Wi-Fi but can't find it at power-up, it st
 - **Storage bar** with free space
 - **Bottom line:** the **IP address** to open
 
-The screen sleeps after 5 minutes; a short press of **PRG** wakes it.
+The screen goes dark after 5 minutes, even with The Shelf open in a browser. A short press of **PRG** wakes it, and so does **Wake** from a remote board over Coms.
 
-The **Heltec V4** card at the bottom of The Shelf's sidebar opens the board's settings page (`/board/`). There you can change Wi-Fi, rename the board, see storage, and restart it. Hold **PRG** for 6 seconds to forget the Wi-Fi.
+The **Heltec V4** card at the bottom of The Shelf's sidebar opens the board's settings page (`/board/`). There you can change Wi-Fi, rename the board, see storage, and restart it. There's also the admin password and read-only switch.
+
+**PRG button:** a short press wakes the screen. Hold it 6 seconds and let go to forget the Wi-Fi and go back to setup mode. Keep holding to 12 seconds to clear the admin password and turn read-only off.
 
 ## More screenshots
 
@@ -149,7 +199,7 @@ The board talks to other Shelves the same way they talk to each other: `shelf-pr
 
 ## Good to know
 
-- **There's no login.** Anyone on your home Wi-Fi can view and change things, the same as Heltec Shelf Lite. Don't put it on a guest network you share.
+- **No accounts.** Anyone on your Wi-Fi can open it. Set an admin password and turn on read-only mode so only you can change things.
 - Expect roughly 0.5–1 MB/s through the SPI card. Songs, photos, documents and games are quick; big videos are slow to upload.
 - Weather needs the browser to share its location. Browsers only allow that on `https` or `localhost` pages, so on the board it usually stays hidden, the same as The Shelf does on a LAN.
 
@@ -178,6 +228,8 @@ ShelfV4/
                    thumbnails, photo editor, zipped games, Range-capable file serving
   api_tools.cpp    Home board, Notes/Docs/Slides/Sheets, Draw, Visitors, weather, settings
   messaging.cpp    Shelf-to-Shelf discovery and chat
+  coms.cpp         900MHz Coms: LoRa mesh, catch-up, receipts, hellos, signed remote admin
+  admin.cpp        admin password, read-only mode, write-unlock cookies, signing keys
   music_meta.cpp   artist, title and cover art from ID3 tags
   util.cpp         JSON bodies (spooled to the card when big), streaming responses
 board-ui/          the board's settings page and the small additions to The Shelf's page
