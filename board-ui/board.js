@@ -341,3 +341,55 @@
     timer = setInterval(() => { if (document.activeElement && document.activeElement.id === 'comsName') return; refresh(false); }, 2000);
   };
 })();
+
+// ---- iPhone/iPad: visualizer bars that start quickly, and lock-screen controls that stay ----
+// The Shelf draws the bars on iOS from the song itself: it downloads the whole file a second
+// time and decodes it. From the board that takes a while, and when it's too slow The Shelf
+// falls back to a hidden second <audio> routed through Web Audio, which is what makes iOS lose
+// the lock-screen play/pause/next controls. Here the song is fetched in 512 KB pieces and each
+// piece decoded as it arrives, so the bars start within seconds, and the hidden copy is never used.
+(function () {
+  if (typeof IS_IOS === 'undefined' || !IS_IOS || typeof preparePcmViz !== 'function') return;
+  try { ensureShadowVisualizer = function () {}; } catch (e) {}           // never the hidden second player
+  const CHUNK = 512 * 1024;
+  const isMidiUrl = u => /\.(mid|midi|kar|rmi)$/i.test(String(u).split('?')[0]);
+  preparePcmViz = async function () {
+    const src = audio.src;
+    if (!src || pcmViz.src === src) return;
+    const st = { src, data: null, rate: PCM_VIZ_RATE, ready: false, fallback: false };
+    pcmViz = st; pcmVizSmoothed.fill(0);
+    if (isMidiUrl(src)) return;                                              // MIDI: no file to decode
+    try {
+      const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      const duration = await waitForDuration(20000);
+      if (pcmViz !== st) return;
+      let total = Infinity, pos = 0, filled = 0;
+      let data = new Float32Array(Math.max(1, Math.ceil((duration || 240) * PCM_VIZ_RATE)));
+      const place = (mono, at) => {
+        if (at + mono.length > data.length) { const d = new Float32Array(Math.ceil((at + mono.length) * 1.25)); d.set(data); data = d; st.data = data; }
+        data.set(mono, at);
+      };
+      while (pos < total) {
+        if (pcmViz !== st) return;                                           // a different track started
+        const r = await fetch(src, { headers: { Range: 'bytes=' + pos + '-' + (pos + CHUNK - 1) } });
+        if (r.status !== 206 && r.status !== 200) throw new Error('fetch ' + r.status);
+        const cr = r.headers.get('Content-Range');
+        const bytes = await r.arrayBuffer();
+        if (r.status === 200) total = bytes.byteLength; else if (cr) total = +cr.split('/')[1] || Infinity;
+        const startByte = pos; pos += bytes.byteLength;
+        if (!bytes.byteLength) break;
+        // where this piece starts in the song: by samples decoded so far, or by bytes if a piece failed
+        const expected = isFinite(total) && duration ? Math.floor(startByte / total * duration * PCM_VIZ_RATE) : filled;
+        const at = Math.abs(expected - filled) > PCM_VIZ_RATE * 2 ? expected : filled;
+        try {
+          const dec = await decodeToBuffer(new Offline(1, 1, PCM_VIZ_RATE), bytes);
+          if (pcmViz !== st) return;
+          const mono = new Float32Array(dec.length);
+          for (let c = 0; c < dec.numberOfChannels; c++) { const ch = dec.getChannelData(c); for (let i = 0; i < mono.length; i++) mono[i] += ch[i] / dec.numberOfChannels; }
+          place(mono, at); filled = at + mono.length;
+        } catch (e) { filled = at; }                                         // undecodable piece: leave it quiet
+        st.data = data; st.rate = PCM_VIZ_RATE; st.ready = true;              // bars start after the first piece
+      }
+    } catch (e) { /* no bars for this song; playback and the lock screen are unaffected */ }
+  };
+})();

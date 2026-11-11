@@ -463,7 +463,7 @@ Player.ensureCtx = function () {
   if (!this.ctx) {
     try { if (typeof ensureVisualizer === 'function') ensureVisualizer(); } catch (e) {}
     let ctx = null, out = [];
-    try { if (typeof visualizerCtx !== 'undefined' && visualizerCtx && visualizerAnalyser) { ctx = visualizerCtx; out = [visualizerAnalyser]; if (visualizerScopeAnalyser) out.push(visualizerScopeAnalyser); } } catch (e) {}
+    try { if (!(typeof IS_IOS !== 'undefined' && IS_IOS) && typeof visualizerCtx !== 'undefined' && visualizerCtx && visualizerAnalyser) { ctx = visualizerCtx; out = [visualizerAnalyser]; if (visualizerScopeAnalyser) out.push(visualizerScopeAnalyser); } } catch (e) {}
     if (!ctx) { const AC = window.AudioContext || window.webkitAudioContext; ctx = new AC({ latencyHint: 'interactive' }); }
     this.ctx = ctx;
     this.synth = new Synth(ctx);
