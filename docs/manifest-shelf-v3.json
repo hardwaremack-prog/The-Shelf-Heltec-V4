@@ -1,6 +1,6 @@
 {
   "name": "The Shelf for Heltec V3",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "new_install_prompt_erase": true,
   "builds": [
     { "chipFamily": "ESP32-S3", "parts": [ { "path": "firmware/shelf-v3.bin", "offset": 0 } ] }

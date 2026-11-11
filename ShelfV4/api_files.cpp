@@ -469,9 +469,9 @@ bool handleFilesApi(AsyncWebServerRequest* r, const String& url, WebRequestMetho
     return true;
   }
   if (action == "thumbnail") {
-    bool video = cat == "Videos";
-    if (!video && !thumbable(cat)) { sendErr(r, 400, "This shelf does not support thumbnails."); return true; }
-    const char* kind = video ? "video-thumbs" : "file-thumbs";
+    bool video = cat == "Videos", music = cat == "Music";      // Music: the song's cover art
+    if (!video && !music && !thumbable(cat)) { sendErr(r, 400, "This shelf does not support thumbnails."); return true; }
+    const char* kind = video ? "video-thumbs" : music ? "album-art" : "file-thumbs";
     String tp = thumbPath(kind, cat, safe);
     if (m == HTTP_DELETE) {
       bool had = store->exists(tp); if (had) store->remove(tp);
