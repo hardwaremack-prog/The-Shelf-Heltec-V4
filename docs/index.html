@@ -51,6 +51,7 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
 
   <h2>1. Install it</h2>
   <p>Plug the board into this computer with a USB-C <i>data</i> cable, pick your board, then choose its port when Chrome asks. This works in Chrome or Edge on a PC, Mac or Raspberry Pi. It's a 5 MB install, so give it a minute or two.</p>
+  <div class="warn"><b>Coming from v1.8 or earlier?</b> Install v1.9 once over USB here. It gives the board a second firmware slot, so from then on it updates itself over Wi-Fi: open its settings page and choose <b>Update firmware</b>. This one-time change clears files kept on the board's own flash (boards without a card); files on a microSD card, your Wi-Fi, admin password and settings all stay. If your files are on the board itself, back it up first (below).</div>
   <div class="warn">This replaces whatever is on the board, Meshtastic included. You can put Meshtastic back any time from <a href="https://flasher.meshtastic.org">flasher.meshtastic.org</a>.</div>
   <div class="grid">
     <div class="card">
@@ -87,7 +88,7 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
   <p class="muted" style="margin-top:10px">Not sure which you have? Install the standard V4 one. The board's settings page shows how much PSRAM it found; if it lists none, reinstall with the R8 button.</p>
 
   <h2>2. Wire a microSD card</h2>
-  <p>Use the small 3.3 V SPI module whose pins read 3v3 · CS · MOSI · CLK · MISO · GND. It has no regulator: 3V3 only, never 5V. The card goes on four neighbouring J3 pins, the same on the V4 and the V3. With no card fitted, The Shelf uses about 10 MB of a V4's own flash, or about 4 MB of a V3's.</p>
+  <p>Use the small 3.3 V SPI module whose pins read 3v3 · CS · MOSI · CLK · MISO · GND. It has no regulator: 3V3 only, never 5V. The card goes on four neighbouring J3 pins, the same on the V4 and the V3. With no card fitted, The Shelf uses about 9 MB of a V4's own flash, or about 2.5 MB of a V3's.</p>
   <img src="sd-wiring-shelf-v4.png" alt="microSD wiring: 3v3 to 3V3, GND to GND, CS to GPIO 42, MOSI to GPIO 41, CLK to GPIO 40, MISO to GPIO 39" style="width:100%;max-width:900px;border-radius:10px;margin:8px 0 14px">
   <table>
     <tr><th>Module pin</th><th>Heltec V4 / V3 pin</th></tr>
@@ -125,6 +126,9 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
   <p>The address to open is always on the bottom line, and the battery meter is in the top corner. The screen sleeps after 5 minutes; press PRG to wake it. New Coms messages show for 15 seconds.</p>
   <img class="shot" src="screenshots/oled-all.png" alt="The board's screen on your Wi-Fi, on its own Wi-Fi, and at setup" style="image-rendering:pixelated">
 
+
+  <h2>Updates over Wi-Fi</h2>
+  <p>From v1.9, open the board's settings page and choose <b>Update firmware</b> (or go to <code>/update</code> on the board). <b>Check for update</b> downloads the newest version from this site and installs it; your files and settings stay. On the board's own Wi-Fi, where there's no internet, download your board's file first (<a href="firmware/shelf-v4.bin" download>V4</a> · <a href="firmware/shelf-v4-r8.bin" download>V4-R8</a> · <a href="firmware/shelf-v3.bin" download>V3</a>) and use <b>Update from a file</b>. The board's screen shows the progress. The update page is built into the firmware, so it still works if an update is ever cut off.</p>
 
   <h2 id="backup">Back up or restore the whole board</h2>
   <p>Save everything on the board's own flash to one compressed file: the firmware, your Wi-Fi, admin password, Coms history, and any files kept on the board when no card is fitted. Restore puts it all back exactly as it was, on this board or a replacement of the same kind. Plug in over USB-C like an install. The microSD card is backed up separately, over Wi-Fi, from the board's settings page.</p>

@@ -346,40 +346,36 @@
 // The Shelf draws the bars on iOS from the song itself: it downloads the whole file a second
 // time and decodes it. From the board that takes a while, and when it's too slow The Shelf
 // falls back to a hidden second <audio> routed through Web Audio, which is what makes iOS lose
-// the lock-screen play/pause/next controls. Here an MP3 is fetched in pieces and decoded as
-// they arrive, so the bars start within seconds, and the hidden copy is never used.
+// the lock-screen play/pause/next controls. The hidden copy is never used here.
 //
-// Safari only decodes a piece that is a clean run of whole MP3 frames: a piece that starts
-// in the middle of a frame, or inside the ID3 tag (cover art can make that tag bigger than a
-// piece), fails outright. So the ID3 tag is skipped, the bytes are cut on frame boundaries,
-// and each piece is placed in the song by counting frames, which stays exact to the end.
-// Other formats (M4A, OGG, FLAC, WAV) are fetched whole and decoded in one go.
+// Instead an MP3 is downloaded in pieces, and what has arrived so far is decoded from the
+// start of the song each time: first ~4 seconds' worth, then three times as much, and so on,
+// so the bars start within seconds and keep ahead of the music. Safari is fussy: a piece cut
+// from the middle of an MP3 usually won't decode at all (most frames borrow bytes from the
+// frame before), which is why bars used to stop after the first few seconds. Decoding from
+// the start, cut on a whole frame, always works. The ID3 tag (cover art can make it big) is
+// skipped. Other formats are fetched whole and decoded once.
 (function () {
   if (typeof IS_IOS === 'undefined' || !IS_IOS || typeof preparePcmViz !== 'function') return;
   try { ensureShadowVisualizer = function () {}; } catch (e) {}           // never the hidden second player
-  const NET = 384 * 1024, BATCH = 512 * 1024, WHOLE_MAX = 40 * 1048576;
+  const NET = 384 * 1024, FIRST = 96 * 1024, GROW = 3, WHOLE_MAX = 40 * 1048576;
   const isMidiUrl = u => /\.(mid|midi|kar|rmi)$/i.test(String(u).split('?')[0]);
   const isMp3Url = u => /\.mp3$/i.test(decodeURIComponent(String(u).split('?')[0]));
   const BR = { 1: [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320],   // MPEG-1 Layer III
                2: [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160] };      // MPEG-2/2.5 Layer III
   const SR = { 3: [44100, 48000, 32000], 2: [22050, 24000, 16000], 0: [11025, 12000, 8000] };
-  // An MP3 frame header at b[i]: its length in bytes and how many samples it holds, or null.
-  function frameAt(b, i) {
-    if (i + 4 > b.length || b[i] !== 0xFF || (b[i + 1] & 0xE0) !== 0xE0) return null;
+  function frameLen(b, i) {                                                  // an MP3 frame header at b[i]: its length, or 0
+    if (i + 4 > b.length || b[i] !== 0xFF || (b[i + 1] & 0xE0) !== 0xE0) return 0;
     const ver = (b[i + 1] >> 3) & 3, layer = (b[i + 1] >> 1) & 3, bri = b[i + 2] >> 4, sri = (b[i + 2] >> 2) & 3;
-    if (ver === 1 || layer !== 1 || bri === 0 || bri === 15 || sri === 3) return null;   // Layer III only
+    if (ver === 1 || layer !== 1 || bri === 0 || bri === 15 || sri === 3) return 0;     // Layer III only
     const kbps = BR[ver === 3 ? 1 : 2][bri], sr = SR[ver][sri], pad = (b[i + 2] >> 1) & 1;
-    const len = ver === 3 ? Math.floor(144000 * kbps / sr) + pad : Math.floor(72000 * kbps / sr) + pad;
-    return { len, samples: ver === 3 ? 1152 : 576, sr };
+    return ver === 3 ? Math.floor(144000 * kbps / sr) + pad : Math.floor(72000 * kbps / sr) + pad;
   }
-  // A frame we can trust: its header is followed by another header where it says (or the data ends).
-  function goodFrame(b, i, last) {
-    const f = frameAt(b, i);
-    if (!f || f.len < 24) return null;
-    if (i + f.len + 4 <= b.length) return frameAt(b, i + f.len) ? f : null;
-    return last && i + f.len <= b.length ? f : null;
+  // first frame: a header whose next header is where it says
+  function firstFrame(b, from) {
+    for (let i = from; i + 4 <= b.length; i++) { const n = frameLen(b, i); if (n >= 24 && frameLen(b, i + n)) return i; }
+    return -1;
   }
-  const join = (a, b) => { if (!a.length) return b; const c = new Uint8Array(a.length + b.length); c.set(a); c.set(b, a.length); return c; };
   function mono(dec) {
     const m = new Float32Array(dec.length);
     for (let c = 0; c < dec.numberOfChannels; c++) { const ch = dec.getChannelData(c); for (let i = 0; i < m.length; i++) m[i] += ch[i] / dec.numberOfChannels; }
@@ -391,76 +387,59 @@
     if (!src || pcmViz.src === src) return;
     const st = { src, data: null, rate: PCM_VIZ_RATE, ready: false, fallback: false };
     pcmViz = st; pcmVizSmoothed.fill(0);
-    if (isMidiUrl(src)) return;                                              // MIDI: no file to decode
+    if (isMidiUrl(src)) return;                                              // MIDI: bars come from the synth (midi.js)
     const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     const live = () => pcmViz === st;
+    const decode = async bytes => mono(await decodeToBuffer(new Offline(1, 1, PCM_VIZ_RATE), bytes));
     try {
-      const duration = await waitForDuration(20000);
-      if (!live()) return;
-      let data = new Float32Array(Math.max(1, Math.ceil((duration || 240) * PCM_VIZ_RATE)));
-      st.data = data;
-      const place = (m, at) => {
-        if (at + m.length > data.length) { const d = new Float32Array(Math.ceil((at + m.length) * 1.1)); d.set(data); data = d; st.data = data; }
-        data.set(m, at);
-      };
-
       if (!isMp3Url(src)) {                                                  // whole file, one decode
         const r = await fetch(src);
-        if (!r.ok) return;
-        const len = +r.headers.get('Content-Length') || 0;
-        if (len > WHOLE_MAX) return;
+        if (!r.ok || (+r.headers.get('Content-Length') || 0) > WHOLE_MAX) return;
         const bytes = await r.arrayBuffer();
         if (!live()) return;
-        place(mono(await decodeToBuffer(new Offline(1, 1, PCM_VIZ_RATE), bytes)), 0);
+        st.data = await decode(bytes);
         if (live()) st.ready = true;
         return;
       }
-
-      let pos = 0, total = Infinity, skip = -1, buf = new Uint8Array(0), samples = 0, sr = 0;
+      let buf = new Uint8Array(1 << 20), have = 0, pos = 0, total = Infinity;
+      let start = -1, walked = -1, frames = 0, next = FIRST, failed = 0;
       while (true) {
         if (!live()) return;
-        let last = false;
         if (pos < total) {
           const r = await fetch(src, { headers: { Range: 'bytes=' + pos + '-' + (pos + NET - 1) } });
           if (r.status !== 206 && r.status !== 200) throw new Error('fetch ' + r.status);
           const piece = new Uint8Array(await r.arrayBuffer());
-          if (r.status === 200) total = piece.length;
+          if (r.status === 200) { total = piece.length; pos = 0; have = 0; }
           else { const cr = r.headers.get('Content-Range'); total = cr ? (+cr.split('/')[1] || Infinity) : Infinity; }
-          pos += piece.length;
           if (!piece.length) total = pos;
-          buf = join(buf, piece);
+          if (have + piece.length > buf.length) { const nb = new Uint8Array(Math.max(have + piece.length, buf.length * 2)); nb.set(buf.subarray(0, have)); buf = nb; }
+          buf.set(piece, have); have += piece.length; pos += piece.length;
         }
-        last = pos >= total;
-        if (skip < 0) {                                                      // the ID3v2 tag at the start
-          if (buf.length < 10 && !last) continue;
-          skip = 0;
-          if (buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33) {
+        const last = pos >= total;
+        if (start < 0) {                                                     // skip the ID3 tag, find the first frame
+          let skip = 0;
+          if (have >= 10 && buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33)
             skip = 10 + ((buf[6] & 127) << 21 | (buf[7] & 127) << 14 | (buf[8] & 127) << 7 | (buf[9] & 127)) + (buf[5] & 0x10 ? 10 : 0);
-          }
+          if (have < skip + 4096 && !last) continue;
+          start = firstFrame(buf.subarray(0, have), skip);
+          if (start < 0) { if (last) return; start = -1; continue; }
+          walked = start;
         }
-        if (skip > 0) { const k = Math.min(skip, buf.length); buf = buf.subarray(k); skip -= k; if (skip > 0) { if (last) return; continue; } }
-        if (buf.length < (samples ? BATCH : 96 * 1024) && !last) continue;   // a small first piece, so the bars start soon
-
-        // Cut on frame boundaries: find the first trusted frame, then walk whole frames.
-        let i = 0, start = -1, n = 0;
-        while (i + 4 <= buf.length) {
-          const f = goodFrame(buf, i, last);
-          if (!f) { if (start >= 0) break; i++; continue; }
-          if (start < 0) start = i;
-          if (!sr) sr = f.sr;
-          n += f.samples; i += f.len;
-        }
-        if (start < 0) { if (last) break; buf = buf.subarray(Math.max(0, buf.length - 3)); continue; }
-        const run = buf.slice(start, i), at = Math.round(samples / sr * PCM_VIZ_RATE);
-        buf = buf.subarray(i);
-        samples += n;
+        // walk whole frames as far as they've arrived
+        while (true) { const n = frameLen(buf, walked); if (!n || walked + n > have) break; walked += n; frames++; }
+        const ready = walked - start;
+        if (ready < next && !last) continue;
         try {
-          const m = mono(await decodeToBuffer(new Offline(1, 1, PCM_VIZ_RATE), run.buffer));
+          const m = await decode(buf.slice(start, walked).buffer);            // from the start of the song, every time
           if (!live()) return;
-          place(m.subarray(0, Math.min(m.length, Math.round(n / sr * PCM_VIZ_RATE))), at);
-          st.ready = true;                                                   // bars start after the first piece
-        } catch (e) { /* this piece wouldn't decode: it stays quiet, the rest still line up */ }
-        if (last && buf.length < 4) break;
+          st.data = m; st.rate = PCM_VIZ_RATE; st.ready = true;
+          next = Math.max(next * GROW, ready + FIRST);
+        } catch (e) { if (++failed > 2) return; next = ready + FIRST; }       // try again with a bit more
+        if (last) {
+          // the whole song is in: one last pass if frames ended early (a glitch or a tag mid-file)
+          if (walked < have - 256 && !failed) { const more = firstFrame(buf.subarray(0, have), walked); if (more > 0) { st.data = await decode(buf.slice(start, have).buffer).catch(() => st.data); } }
+          return;
+        }
       }
     } catch (e) { /* no bars for this song; playback and the lock screen are unaffected */ }
   };

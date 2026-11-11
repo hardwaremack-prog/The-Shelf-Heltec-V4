@@ -47,10 +47,17 @@ build() {   # name psram-option flash-size partitions app-size www-offset extra-
   $ESPTOOL --chip esp32s3 merge_bin -o "docs/firmware/$name.bin" --flash_mode keep --flash_freq keep --flash_size "${flash}B" \
     0x0 "$bd/ShelfV4.ino.bootloader.bin" 0x8000 "$bd/ShelfV4.ino.partitions.bin" \
     0xe000 "$boot_app0" 0x10000 "$bd/ShelfV4.ino.bin" "$wwwoff" "$www"
+  # the two pieces a board downloads to update itself over Wi-Fi (its /update page)
+  mkdir -p docs/ota
+  gzip -9 -n -c "$bd/ShelfV4.ino.bin" > "docs/ota/$name-app.bin.gz"
+  gzip -9 -n -c "$www" > "docs/ota/$name-www.bin.gz"
+  local ver; ver=$(sed -n 's/^#define FW_VERSION "\(.*\)"/\1/p' ShelfV4/board.h)
+  printf '{"version":"%s","app":"%s-app.bin.gz","appSize":%d,"www":"%s-www.bin.gz","wwwSize":%d}\n' \
+    "$ver" "$name" "$(stat -c %s "$bd/ShelfV4.ino.bin")" "$name" "$(stat -c %s "$www")" > "docs/ota/$name.json"
 }
 
 #     name        PSRAM    flash partitions       app max  www       defines     Serial
-build shelf-v4    enabled  16M   v4_16mb.csv      3145728  0x310000  ""          cdc
-build shelf-v4-r8 opi      16M   v4_16mb.csv      3145728  0x310000  ""          cdc
-build shelf-v3    disabled 8M    v3_8mb.csv       1835008  0x1D0000  -DSHELF_V3  default   # V3 talks USB through a CP2102
+build shelf-v4    enabled  16M   v4_16mb.csv      2097152  0x410000  ""          cdc
+build shelf-v4-r8 opi      16M   v4_16mb.csv      2097152  0x410000  ""          cdc
+build shelf-v3    disabled 8M    v3_8mb.csv       1703936  0x350000  -DSHELF_V3  default   # V3 talks USB through a CP2102
 ls -la docs/firmware

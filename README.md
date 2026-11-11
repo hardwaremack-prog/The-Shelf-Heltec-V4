@@ -55,7 +55,7 @@ The V3's J3 row is laid out the same way ([V3 diagram](docs/sd-wiring-shelf-v3.p
 
 > **Upgrading from v1.5 or earlier on a V4 or V3?** The card moved from CS 4 · MISO 6 · CLK 47 · MOSI 48 to the pins above. Move the four signal wires, or the board won't find the card and will use its own flash instead.
 
-With no card, The Shelf keeps files in the board's own flash: about 10 MB on a V4, about 4 MB on a V3. The screen shows **SD** or **FLASH** in the corner.
+With no card, The Shelf keeps files in the board's own flash: about 9 MB on a V4, about 2.5 MB on a V3. The screen shows **SD** or **FLASH** in the corner.
 
 ### On a Heltec V3
 
@@ -63,7 +63,7 @@ The V3 gets the same Shelf, the same tabs and the same 900MHz Coms. Its mesh set
 
 - **Transmit power.** The V3 has no front-end amplifier, so its levels are Low ~11, Normal ~17 and High ~22 dBm (the V4 reaches ~27). The tab shows the right numbers for each board.
 - **Memory.** The V3 has no PSRAM, so it keeps the newest 150 Coms messages on screen (the V4 keeps 300). The full log stays on the card. Give it a little longer with lots of people browsing at once.
-- **Storage without a card** is about 4 MB, so fit a microSD card.
+- **Storage without a card** is about 2.5 MB, so fit a microSD card.
 - **Screen** says **V3** in the top bar, and its address is `shelf-v3-xxxx.local`.
 
 ### On the card
@@ -206,6 +206,14 @@ The **Heltec V4** card at the bottom of The Shelf's sidebar opens the board's se
 ## Messages between Shelves
 
 The board talks to other Shelves the same way they talk to each other: `shelf-presence` broadcasts on UDP port 41234, a network scan that asks every address on port 8080 "are you a Shelf?", and direct HTTP for messages. That's why the board answers on **port 8080** as well as port 80. Click the board in another Shelf's Messages list to chat, or choose **Connect Shelf** to open it.
+
+## Updates over Wi-Fi
+
+From v1.9 the board has two firmware slots. On its settings page, **Update firmware** (or `http://<board>/update`) checks the [installer site](https://hardwaremack-prog.github.io/The-Shelf-Heltec-V4900mhzMesh/) for a newer version and installs it over Wi-Fi: the new firmware goes into the spare slot and the web app is rewritten, then the board restarts into it. Files, settings, Wi-Fi and the admin password stay. Without internet (the board's own Wi-Fi), pick the board's installer `.bin` with **Update from a file**. The update page is built into the firmware, so it works even if a web-app update was cut off. Read-only mode blocks updates until write mode is unlocked.
+
+> **Coming from v1.8 or earlier:** install v1.9 once over USB from the installer page. That one install changes the flash layout (adds the second slot), which clears files kept on the board's own flash; files on a microSD card are untouched.
+
+`build.sh` also writes `docs/ota/<board>.json` plus gzipped `-app.bin.gz` and `-www.bin.gz` pieces, which is what the update page downloads.
 
 ## Backups
 

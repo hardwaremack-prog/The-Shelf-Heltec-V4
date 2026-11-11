@@ -134,6 +134,12 @@ bool handleMessagingApi(AsyncWebServerRequest* r, const String& url, WebRequestM
 bool handleBoardApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);
 bool handleCardApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);   // microSD backup/restore
 bool isCardFileUpload(const String& url);
+// ota.cpp: firmware updates over Wi-Fi
+bool isOtaUpload(const String& url);
+void otaBody(AsyncWebServerRequest* r, uint8_t* data, size_t len, size_t index, size_t total);
+bool handleOtaApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);
+extern volatile int otaPercent;
+extern volatile char otaWhat;
 void handleUploadPart(AsyncWebServerRequest* r, const String& filename, size_t index, uint8_t* data, size_t len, bool final);
 void filesUploadDone(AsyncWebServerRequest* r);
 void portalMediaDone(AsyncWebServerRequest* r);

@@ -458,13 +458,27 @@ const ticks = on => { clearInterval(tick); if (on) tick = setInterval(() => { if
 const applyVol = () => { if (Player.synth) Player.synth.master.gain.value = 0.8 * Math.pow(vol, 1.5); };
 
 // Use The Shelf's own AudioContext when it has one, feeding the visualizer's analysers, so the
-// bars move for MIDI too (on iPhone the visualizer works differently; there it just plays).
+// bars move for MIDI too. On iPhone it gets analysers of its own (below).
 Player.ensureCtx = function () {
   if (!this.ctx) {
     try { if (typeof ensureVisualizer === 'function') ensureVisualizer(); } catch (e) {}
     let ctx = null, out = [];
     try { if (!(typeof IS_IOS !== 'undefined' && IS_IOS) && typeof visualizerCtx !== 'undefined' && visualizerCtx && visualizerAnalyser) { ctx = visualizerCtx; out = [visualizerAnalyser]; if (visualizerScopeAnalyser) out.push(visualizerScopeAnalyser); } } catch (e) {}
-    if (!ctx) { const AC = window.AudioContext || window.webkitAudioContext; ctx = new AC({ latencyHint: 'interactive' }); }
+    if (!ctx) {
+      // iPhone (or no shared context): the synth plays through its own context, so give it its
+      // own analysers and let the visualizer read them. On iOS the song's own bars come from the
+      // decoded file; while a MIDI song plays nothing is decoded, so the bars use these instead.
+      const AC = window.AudioContext || window.webkitAudioContext; ctx = new AC({ latencyHint: 'interactive' });
+      try {
+        const an = ctx.createAnalyser(); an.fftSize = 64;
+        const sc = ctx.createAnalyser(); sc.fftSize = 2048;
+        an.connect(ctx.destination); out = [an, sc];
+        if (!visualizerAnalyser) visualizerAnalyser = an;
+        if (!visualizerScopeAnalyser) visualizerScopeAnalyser = sc;
+        if (!visualizerData || visualizerData.length !== an.frequencyBinCount) visualizerData = new Uint8Array(an.frequencyBinCount);
+        if (!visualizerTimeData || visualizerTimeData.length !== sc.fftSize) visualizerTimeData = new Uint8Array(sc.fftSize).fill(128);
+      } catch (e) { out = []; }
+    }
     this.ctx = ctx;
     this.synth = new Synth(ctx);
     if (out.length) { this.synth.comp.disconnect(); for (const n of out) this.synth.comp.connect(n); }   // analyser -> speakers

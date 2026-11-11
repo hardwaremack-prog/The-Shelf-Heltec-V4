@@ -385,11 +385,12 @@ class ShelfHandler : public AsyncWebHandler {
   bool canHandle(AsyncWebServerRequest* r) const override {
     const String& u = r->url();
     return u.startsWith("/api/") || u.startsWith("/shared/") || u.startsWith("/play/") || u.startsWith("/data-files/") ||
-           u == "/" || u == "/index.html";
+           u == "/" || u == "/index.html" || u == "/update";
   }
   bool isRequestHandlerTrivial() const override { return false; }
 
   void handleBody(AsyncWebServerRequest* r, uint8_t* data, size_t len, size_t index, size_t total) override {
+    if (isOtaUpload(r->url())) { otaBody(r, data, len, index, total); return; }   // firmware updates go straight to flash
     if (index == 0) {
       if (r->_tempObject) return;
       if (r->client() && total > 64 * 1024) r->client()->setRxTimeout(30);   // big pasted pictures / docs: don't drop on a slow card
@@ -451,7 +452,7 @@ class ShelfHandler : public AsyncWebHandler {
       return;
     }
     if (serveContent(r, url)) return;
-    bool done = handleCardApi(r, url, m) || handleBoardApi(r, url, m) || handleComsApi(r, url, m) || handleMessagingApi(r, url, m) || handleFilesApi(r, url, m) || handleToolsApi(r, url, m);
+    bool done = handleOtaApi(r, url, m) || handleCardApi(r, url, m) || handleBoardApi(r, url, m) || handleComsApi(r, url, m) || handleMessagingApi(r, url, m) || handleFilesApi(r, url, m) || handleToolsApi(r, url, m);
     if (!done) sendErr(r, 404, "Not found");
     cleanup(r);
   }
@@ -626,6 +627,12 @@ void loop() {
   static uint32_t lastDraw = 0;
   static uint32_t lastBatt = 0;
   if (lastBatt == 0 || now - lastBatt > 10000) { readBattery(); lastBatt = now; }
-  if (!btnDown && now - lastDraw > (scrolling ? 200u : 1000u)) { onlineShelves = onlinePeerCount(); drawStatus(); lastDraw = now; }
+  static int otaShown = -1;
+  if (otaPercent >= 0) {                                   // an update is being written: say so, don't unplug
+    if (otaPercent != otaShown && now - lastDraw > 250) {
+      char b[24]; snprintf(b, sizeof b, "%s %d%%", otaWhat == 'w' ? "Web app" : "Firmware", otaPercent);
+      oledMsg("UPDATING", b, "Don't unplug"); otaShown = otaPercent; lastDraw = now;
+    }
+  } else if (!btnDown && now - lastDraw > (scrolling ? 200u : 1000u)) { otaShown = -1; onlineShelves = onlinePeerCount(); drawStatus(); lastDraw = now; }
   delay(5);
 }
