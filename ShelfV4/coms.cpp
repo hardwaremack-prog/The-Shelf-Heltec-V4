@@ -36,6 +36,7 @@ static const uint8_t C_STATUS = 1, C_READONLY = 2, C_REBOOT = 3, C_SCREEN = 4, C
                      C_WIFI_OWN = 7, C_WIFI_HOME = 8, C_NAME = 9, C_PING = 10, C_LIST = 11;
 static const uint8_t RS_OK = 0, RS_BADPASS = 1, RS_STALE = 2, RS_UNKNOWN = 3, RS_NOADMIN = 4, RS_LOCKED = 5;
 static const uint32_t HELLO_EVERY_MS = 15UL * 60 * 1000;
+static const size_t REPLY_MAX = 255 - 27 - 8;          // remote-admin reply data, one packet
 static const uint32_t SYNC_WINDOW_S = 12 * 3600;                  // catch-up covers the last 12 hours
 static const int SYNC_MAX = 60;
 // No practical hop limit: every board relays a message once and remembers its id, so a
@@ -416,7 +417,6 @@ static void sendAdminResp(uint32_t dest, uint32_t reqId, uint8_t status, const S
   queueTx(b, n, 300 + esp_random() % 600);
 }
 
-static const size_t REPLY_MAX = 255 - 27 - 8;
 static String fullRemoteStatus() {
   String s = remoteStatusJson(); s.remove(s.length() - 1);
   String core = s + ",\"cm\":\"" + jsonEsc(myName) + "\",\"lv\":" + level + ",\"rc\":" + (receiptsOn ? 1 : 0) + ",\"mb\":" + members.size();
