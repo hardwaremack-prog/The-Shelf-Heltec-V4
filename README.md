@@ -12,7 +12,7 @@
 
 | ✅ Included | 💻 Needs The Shelf on a computer |
 |---|---|
-| Pictures (grid, slideshow, photo editor), Music (shuffle, play counts, artist and cover art read from your MP3s' own tags), Videos, Games (`.html` and zipped HTML games play in the page), Programs, Books (PDF reader and cover thumbnails) | The AI assistant and Create with AI |
+| Pictures (grid, slideshow, photo editor), Music (shuffle, play counts, artist and cover art read from your MP3s' own tags, and **MIDI files** (`.mid`, `.midi`, `.kar`) played by a built-in General MIDI synth), Videos, Games (`.html` and zipped HTML games play in the page), Programs, Books (PDF reader and cover thumbnails) | The AI assistant and Create with AI |
 | Home: bulletin board with notes, pasted pictures and videos, quick links, weather | Remote desktop (VNC) |
 | Notes, Docs, Sheets, Slides, Draw | Online album-art lookup, tag editing, Standardize names, Remove duplicates, Export |
 | Tidy Suite | Big Transfer, backup/restore zips, spreadsheet import |
@@ -243,6 +243,7 @@ ShelfV4/
   music_meta.cpp   artist, title and cover art from ID3 tags
   util.cpp         JSON bodies (spooled to the card when big), streaming responses
 board-ui/          the board's settings page and the small additions to The Shelf's page
+                   (midi.js: MIDI playback, synth from MIDI Vault)
 tools/pack_www.py  builds the web app image
 docs/              web installer (GitHub Pages) and firmware
 ```

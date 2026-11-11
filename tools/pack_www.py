@@ -49,7 +49,7 @@ if not (n1 and n2):
 html = (stage / "index.html").read_text(encoding="utf-8")
 html = html.replace('<link rel="stylesheet" href="style.css">',
                     '<link rel="stylesheet" href="style.css">\n<link rel="stylesheet" href="board.css">', 1)
-html = html.replace('<script src="app.js"></script>', '<script src="app.js"></script>\n<script src="board.js"></script>', 1)
+html = html.replace('<script src="app.js"></script>', '<script src="app.js"></script>\n<script src="board.js"></script>\n<script src="midi.js"></script>', 1)
 html = html.replace("<title>The Shelf</title>", f"<title>The Shelf · Heltec {board}</title>", 1)
 if "board.js" not in html or "board.css" not in html:
     sys.exit("Couldn't add board.js/board.css to index.html")
