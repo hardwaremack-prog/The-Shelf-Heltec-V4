@@ -137,17 +137,32 @@ static UploadCtx* uploadOf(AsyncWebServerRequest* r) {
   return (u && u->magic == UPLOAD_MAGIC) ? u : nullptr;
 }
 
-// Writes whatever is waiting in the buffer. Big, even blocks are far quicker on an SD card
-// than the ~1.4 KB pieces the network hands us.
+// Writes whatever is waiting in the buffer, in one big block (far quicker on an SD card than
+// the ~1.4 KB pieces the network hands us), then makes it stick so the file's size on the card
+// is up to date. If the card refuses the block, reopen the file and put the block back where
+// it belongs, up to 3 more times, before giving up on the upload.
 static bool uploadFlush(AsyncWebServerRequest* r, UploadCtx* u) {
   if (!u->fill) return true;
-  bool ok = r->_tempFile && r->_tempFile.write(u->buf, u->fill) == u->fill;
+  for (int t = 0; t < 4; t++) {
+    if (t) {
+      if (r->_tempFile) r->_tempFile.close();
+      delay(200 * t);
+      r->_tempFile = store->open(u->full, "r+");
+      if (!r->_tempFile || !r->_tempFile.seek(u->synced)) continue;
+      u->retries++;
+    }
+    if (r->_tempFile && r->_tempFile.write(u->buf, u->fill) == u->fill) {
+      r->_tempFile.flush();
+      if (r->_tempFile.position() == u->synced + u->fill) { u->synced += u->fill; u->fill = 0; return true; }
+    }
+  }
   u->fill = 0;
-  return ok;
+  return false;
 }
 static void uploadFail(AsyncWebServerRequest* r, UploadCtx* u, uint8_t err) {
   u->err = err; u->fill = 0;
-  if (r->_tempFile) { String p = String(r->_tempFile.path()); r->_tempFile.close(); store->remove(p); }
+  if (r->_tempFile) r->_tempFile.close();
+  if (u->full[0]) store->remove(u->full);
 }
 
 void handleUploadPart(AsyncWebServerRequest* r, const String& filename, size_t index, uint8_t* data, size_t len, bool final) {
@@ -184,8 +199,9 @@ void handleUploadPart(AsyncWebServerRequest* r, const String& filename, size_t i
     }
     mkdirs(dir);
     strlcpy(u->saved, name.c_str(), sizeof u->saved);
-    u->fill = 0;
-    r->_tempFile = store->open(dir + "/" + name, FILE_WRITE);
+    u->fill = 0; u->synced = 0;
+    strlcpy(u->full, (dir + "/" + name).c_str(), sizeof u->full);
+    r->_tempFile = store->open(u->full, FILE_WRITE);
     if (!r->_tempFile) { u->err = 4; return; }
   }
   if (u->err || !r->_tempFile) return;

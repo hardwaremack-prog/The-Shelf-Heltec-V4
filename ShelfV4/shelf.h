@@ -84,6 +84,9 @@ struct UploadCtx {           // multipart uploads (also freed with free())
   char saved[160];
   char mediaType[8];
   int count;
+  char full[224];            // full path of the file being written
+  uint32_t synced;           // bytes safely on the card so far
+  uint8_t retries;           // blocks that needed a second try
   size_t fill;               // bytes waiting in buf (written to the card in big blocks)
   uint8_t buf[1];            // UPLOAD_BUF bytes (flexible size, same block)
 };

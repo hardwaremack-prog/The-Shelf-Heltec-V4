@@ -4,7 +4,7 @@
 // Same microSD wiring as Heltec Shelf Lite, so a board wired for that works as-is.
 #pragma once
 
-#define FW_VERSION "1.6.1"
+#define FW_VERSION "1.6.2"
 #ifdef SHELF_V3
 #define BOARD_NAME  "Heltec V3"
 #define BOARD_SHORT "V3"
