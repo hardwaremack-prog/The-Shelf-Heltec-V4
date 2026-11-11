@@ -5,6 +5,7 @@
 #   shelf-v3.bin     Heltec V3  (ESP32-S3FN8, 8 MB flash, no PSRAM)
 # Each is a full image (bootloader + app + The Shelf's web app) to flash at 0x0.
 #
+# Uses libraries/AsyncTCP: AsyncTCP that skips poll events when its queue is busy (no lwIP deadlock).
 # Uses libraries/SD: the core's SD library with longer busy-card waits (see its sd_diskio.cpp).
 # Needs: arduino-cli + esp32 core 2.0.17 + the libraries in README.md, mklittlefs,
 # and a copy of The Shelf:  SHELF=../the-shelf ./build.sh   (default: clones it)
@@ -36,9 +37,9 @@ build() {   # name psram-option flash-size partitions app-size www-offset extra-
   cp "partitions/$parts" ShelfV4/partitions.csv
   arduino-cli compile \
     --fqbn "espressif:esp32:esp32s3:FlashSize=$flash,FlashMode=qio,PSRAM=$psram,USBMode=hwcdc,CDCOnBoot=$cdc,CPUFreq=240" \
-    --build-property "compiler.cpp.extra_flags=-DCONFIG_ASYNC_TCP_RUNNING_CORE=0 -DCONFIG_ASYNC_TCP_STACK_SIZE=16384 $defs" \
+    --build-property "compiler.cpp.extra_flags=-DCONFIG_ASYNC_TCP_RUNNING_CORE=0 -DCONFIG_ASYNC_TCP_STACK_SIZE=16384 -DCONFIG_ASYNC_TCP_QUEUE_SIZE=256 $defs" \
     --build-property "upload.maximum_size=$appmax" \
-    --library "$PWD/libraries/SD" \
+    --library "$PWD/libraries/SD" --library "$PWD/libraries/AsyncTCP" \
     ${TOOLPROPS[@]+"${TOOLPROPS[@]}"} --build-path "$bd" ShelfV4
   rm -f ShelfV4/partitions.csv
   local boot_app0

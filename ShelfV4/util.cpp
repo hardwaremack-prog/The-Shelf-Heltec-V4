@@ -210,14 +210,28 @@ Body* bodyOf(AsyncWebServerRequest* r) {
 
 // A reader over a body held in RAM or in its spool file.
 struct BodyReader {
+  // Spooled bodies are read 4 KB at a time: byte-by-byte reads from the card ran at ~33 KB/s.
   Body* b; size_t pos = 0; File f;
-  explicit BodyReader(Body* body) : b(body) { if (b && b->inFile) f = store->open(b->path, FILE_READ); }
-  ~BodyReader() { if (f) f.close(); }
-  bool ok() const { return b && (!b->inFile || f); }
+  uint8_t* rb = nullptr; size_t rbLen = 0, rbPos = 0;
+  explicit BodyReader(Body* body) : b(body) {
+    if (b && b->inFile) { f = store->open(b->path, FILE_READ); rb = (uint8_t*)malloc(4096); }
+  }
+  ~BodyReader() { if (f) f.close(); free(rb); }
+  bool ok() const { return b && (!b->inFile || (f && rb)); }
   int get() {
     if (!b) return -1;
     if (!b->inFile) return pos < b->len ? (uint8_t)b->buf[pos++] : -1;
-    pos++; return f.read();
+    if (rbPos >= rbLen) { int k = f.read(rb, 4096); if (k <= 0) return -1; rbLen = k; rbPos = 0; }
+    pos++; return rb[rbPos++];
+  }
+  size_t readMany(char* out, size_t n) {          // for ArduinoJson's readBytes
+    size_t i = 0;
+    while (i < n) {
+      if (rbPos >= rbLen) { int k = f.read(rb, 4096); if (k <= 0) break; rbLen = k; rbPos = 0; }
+      size_t m = std::min(n - i, rbLen - rbPos);
+      memcpy(out + i, rb + rbPos, m); rbPos += m; i += m; pos += m;
+    }
+    return i;
   }
 };
 
@@ -236,7 +250,7 @@ struct BodyStream : public Stream {
       size_t left = rd.b->len - rd.pos, k = std::min(n - i, left);
       memcpy(buf + i, rd.b->buf + rd.pos, k); rd.pos += k; return i + k;
     }
-    if (rd.f) { int k = rd.f.read((uint8_t*)buf + i, n - i); if (k > 0) { rd.pos += k; i += k; } }
+    if (rd.f) i += rd.readMany(buf + i, n - i);
     return i;
   }
 };
