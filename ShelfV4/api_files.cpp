@@ -84,8 +84,8 @@ static void listFiles(AsyncWebServerRequest* r, const String& cat) {
   JsonDocument meta(&psAlloc);
   if (cat == "Music") loadJsonFile(META_FILE, meta);
 
-  AsyncResponseStream* out = r->beginResponseStream("application/json", 8192);
-  out->addHeader("Cache-Control", "no-store");
+  String body; body.reserve(v.size() * 420 + 16);
+  StrOut so(body); StrOut* out = &so;
   out->print("[");
   bool first = true;
   for (auto& e : v) {
@@ -120,7 +120,7 @@ static void listFiles(AsyncWebServerRequest* r, const String& cat) {
     first = false;
   }
   out->print("]");
-  r->send(out);
+  sendBody(r, 200, "application/json", std::move(body));
 }
 
 // ------------------------------------------------------------ uploads (multipart)

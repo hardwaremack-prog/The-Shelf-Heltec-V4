@@ -101,6 +101,17 @@ struct UploadCtx {           // multipart uploads (also freed with free())
 
 // ---------------------------------------------------------------- responses
 void sendJson(AsyncWebServerRequest* r, int code, const String& body);
+// Sends a finished body straight out of one buffer. (The library's own stream response sends
+// by removing one byte at a time from the front of its buffer, which took minutes for a long
+// song list and froze the board.)
+void sendBody(AsyncWebServerRequest* r, int code, const char* type, String&& body);
+// A Print that appends to a String, for building big replies with printf.
+struct StrOut : public Print {
+  String& s;
+  explicit StrOut(String& str) : s(str) {}
+  size_t write(uint8_t c) override { s += (char)c; return 1; }
+  size_t write(const uint8_t* b, size_t n) override { s.concat((const char*)b, n); return n; }
+};
 void sendErr(AsyncWebServerRequest* r, int code, const String& msg);
 void sendDoc(AsyncWebServerRequest* r, JsonDocument& doc, int code = 200);
 void sendFileRanged(AsyncWebServerRequest* r, const String& path, bool download = false);

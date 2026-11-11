@@ -379,7 +379,21 @@ bool fileWriteWithTail(const String& inPath, const String& outPath, const String
 }
 
 // ------------------------------------------------------------ responses
+void sendBody(AsyncWebServerRequest* r, int code, const char* type, String&& body) {
+  auto buf = std::make_shared<String>(std::move(body));
+  size_t len = buf->length();
+  AsyncWebServerResponse* res = r->beginResponse(type, len, [buf](uint8_t* out, size_t maxLen, size_t index) -> size_t {
+    if (index >= buf->length()) return 0;
+    size_t n = std::min(maxLen, (size_t)buf->length() - index);
+    memcpy(out, buf->c_str() + index, n);
+    return n;
+  });
+  res->setCode(code);
+  res->addHeader("Cache-Control", "no-store");
+  r->send(res);
+}
 void sendJson(AsyncWebServerRequest* r, int code, const String& body) {
+  if (body.length() > 4096) { String copy = body; sendBody(r, code, "application/json", std::move(copy)); return; }
   AsyncWebServerResponse* res = r->beginResponse(code, "application/json", body);
   res->addHeader("Cache-Control", "no-store");
   r->send(res);
