@@ -132,6 +132,8 @@ bool handleFilesApi(AsyncWebServerRequest* r, const String& url, WebRequestMetho
 bool handleToolsApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);
 bool handleMessagingApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);
 bool handleBoardApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);
+bool handleCardApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);   // microSD backup/restore
+bool isCardFileUpload(const String& url);
 void handleUploadPart(AsyncWebServerRequest* r, const String& filename, size_t index, uint8_t* data, size_t len, bool final);
 void filesUploadDone(AsyncWebServerRequest* r);
 void portalMediaDone(AsyncWebServerRequest* r);

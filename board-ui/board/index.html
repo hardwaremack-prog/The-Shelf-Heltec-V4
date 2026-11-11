@@ -44,6 +44,9 @@ label.l{font-size:13px;color:var(--muted)}
 .lockbar{display:none;background:var(--surface);border:1px solid var(--accent);border-radius:14px;padding:12px 14px;margin-bottom:16px}
 .lockbar b{color:var(--accent)}
 .err{color:var(--coral)}
+.bar{height:8px;background:var(--ink-deep);border:1px solid var(--divider);border-radius:99px;overflow:hidden;margin-top:10px;display:none}
+.bar>div{height:100%;width:0;background:var(--accent);transition:width .3s}
+.chk{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted);margin-top:10px}
 </style>
 </head>
 <body>
@@ -117,6 +120,17 @@ label.l{font-size:13px;color:var(--muted)}
   <h2>Storage</h2>
   <p class="tip" id="storeTip"></p>
 
+  <div id="cardSec" style="display:none">
+  <h2>Back up the microSD card</h2>
+  <div class="card"><div class="kv"><span>On the card</span><span id="cardInfo">&mdash;</span></div></div>
+  <p class="tip">Saves everything on the card (your shelves, plus notes, docs, drawings, Coms log and play counts) into one compressed file on this computer, and puts a backup back onto a card. It runs over Wi-Fi at about 0.3&ndash;1&nbsp;MB/s, so a few GB takes an hour or two: keep this page open. The board itself (firmware and settings) is backed up from the installer page over USB.</p>
+  <div class="btns"><button class="pri" id="cardBackupBtn" onclick="cardBackup()">Back up card</button><button id="cardRestoreBtn" onclick="document.getElementById('restoreFile').click()">Restore from a backup&hellip;</button></div>
+  <input type="file" id="restoreFile" accept=".gz,.tgz,.tar" hidden>
+  <label class="chk"><input type="checkbox" id="skipSame" checked> When restoring, skip files that are already on the card at the same size</label>
+  <div class="bar" id="cardBarWrap"><div id="cardBar"></div></div>
+  <div class="msg" id="cardMsg"></div>
+  </div>
+
   <div class="btns" style="margin-top:24px"><button onclick="reboot()">Restart the board</button></div>
   <p class="tip">The screen sleeps after 5 minutes. Press the board's PRG button to wake it.</p>
   <p class="tip">Hold PRG for 6 seconds and let go to forget the Wi-Fi and go back to setup mode. Keep holding to 12 seconds to clear a forgotten admin password and turn read-only off.</p>
@@ -153,6 +167,7 @@ async function lockNow(){await post('/api/admin/lock');loadAdmin()}
 $('#unlockPw').addEventListener('keydown',e=>{if(e.key==='Enter')unlock()});
 async function post(u,d){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d||{})});let j={};try{j=await r.json()}catch(e){}if(!r.ok)throw new Error(j.error||'Something went wrong');return j}
 async function load(){try{I=await fetch('/api/board/info').then(r=>r.json())}catch(e){return}
+  if(I.storage==='microSD card'&&$('#cardSec').style.display==='none')setTimeout(loadCard,0);
   const up=I.uptime>86400?Math.floor(I.uptime/86400)+'d '+Math.floor(I.uptime%86400/3600)+'h':Math.floor(I.uptime/3600)+'h '+Math.floor(I.uptime%3600/60)+'m';
   const rows=[['Board',I.board+(I.psram?' · '+Math.round(I.psram/1048576)+' MB PSRAM':'')],['Firmware','v'+I.fw],['Storage',I.storage+' · '+fmt(I.total)],['Free',fmt(I.total-I.used)],['Address',I.ip],['Name',I.host+'.local'],['Up for',up]];
   if(I.storage==='microSD card')rows.push(['Card writes',(I.sdFailures?I.sdFailures+' failed · ':'')+(I.sdRetries?I.sdRetries+' needed a retry':'all clean')+' since restart']);
@@ -183,7 +198,73 @@ $('#nets').addEventListener('click',async e=>{const b=e.target.closest('.net');i
 async function forget(){if(!confirm('Forget the Wi-Fi? The board restarts in setup mode ('+I.apName+').'))return;try{await post('/api/board/wifi/forget');$('#wMsg').textContent='Restarting in setup mode…'}catch(e){$('#wMsg').textContent=e.message}}
 async function saveHost(){try{const j=await post('/api/board/settings',{host:$('#host').value});$('#wMsg').textContent=j.restart?'Renamed. Restarting…':'Saved.'}catch(e){$('#wMsg').textContent=e.message}}
 async function reboot(){if(!confirm('Restart the board?'))return;await post('/api/board/reboot');$('#wMsg').textContent='Restarting… give it 15 seconds.'}
+// ---- microSD backup / restore ----
+let cardBusy=false;
+const cardMsg=(t,bad)=>{$('#cardMsg').innerHTML=t;$('#cardMsg').className='msg'+(bad?' err':'')};
+const bar=f=>{$('#cardBarWrap').style.display=f==null?'none':'block';$('#cardBar').style.width=((f||0)*100).toFixed(1)+'%'};
+const mins=s=>s<90?Math.round(s)+' s':s<5400?Math.round(s/60)+' min':(s/3600).toFixed(1)+' h';
+async function loadCard(){if(I.storage!=='microSD card'||cardBusy)return;$('#cardSec').style.display='block';
+  try{const c=await fetch('/api/board/card/info').then(r=>r.json());$('#cardInfo').textContent=c.files+' files · '+fmt(c.bytes)}catch(e){}}
+function busy(on){cardBusy=on;$('#cardBackupBtn').disabled=on;$('#cardRestoreBtn').disabled=on;window.onbeforeunload=on?()=>'A card backup or restore is running.':null}
+async function cardBackup(){
+  const day=new Date().toISOString().slice(0,10);
+  if(!window.showSaveFilePicker||!window.CompressionStream){
+    location.href='/api/board/card/backup';
+    cardMsg('Downloading the card as a .tar file. (This browser can\'t compress while saving; use Chrome or Edge on a computer for a compressed .tar.gz.)');return}
+  let handle;try{handle=await showSaveFilePicker({suggestedName:'shelf-card-'+day+'.tar.gz',types:[{description:'Shelf card backup',accept:{'application/gzip':['.tar.gz']}}]})}catch(e){return}
+  busy(true);bar(0);const t0=Date.now();
+  try{
+    const res=await fetch('/api/board/card/backup');if(!res.ok)throw new Error((await res.json().catch(()=>({}))).error||'The board said no');
+    const total=+res.headers.get('Content-Length')||0;let got=0,last=0;
+    const count=new TransformStream({transform(c,ctl){got+=c.length;const now=Date.now();if(now-last>500){last=now;const sp=got/((now-t0)/1000);bar(total?got/total:0);
+      cardMsg('Backing up&hellip; '+fmt(got)+' of '+fmt(total)+' · '+fmt(sp)+'/s'+(total&&sp?' · about '+mins((total-got)/sp)+' left':''))}ctl.enqueue(c)}});
+    await res.body.pipeThrough(count).pipeThrough(new CompressionStream('gzip')).pipeTo(await handle.createWritable());
+    bar(1);cardMsg('Backup saved: '+esc(handle.name)+' ('+fmt(total)+' from the card, in '+mins((Date.now()-t0)/1000)+').')
+  }catch(e){cardMsg('Backup stopped: '+esc(e.message)+'. The file on your computer is incomplete.',1)}
+  busy(false)}
+
+// Reads a .tar (or .tar.gz) as a stream: 512-byte headers, then each file's bytes.
+class TarReader{constructor(stream){this.r=stream.getReader();this.q=[];this.qlen=0;this.eof=false;this.pos=0}
+  async more(){if(this.eof)return false;const{value,done}=await this.r.read();if(done){this.eof=true;return false}if(value&&value.length){this.q.push(value);this.qlen+=value.length}return true}
+  async take(n){const parts=[];while(n>0){if(!this.q.length&&!(await this.more()))throw new Error('the backup file ends early');if(!this.q.length)continue;
+    const c=this.q[0];if(c.length<=n){parts.push(c);this.q.shift();this.qlen-=c.length;n-=c.length;this.pos+=c.length}else{parts.push(c.subarray(0,n));this.q[0]=c.subarray(n);this.qlen-=n;this.pos+=n;n=0}}return parts}
+  async block(){const p=await this.take(512);if(p.length===1)return p[0];const b=new Uint8Array(512);let o=0;for(const x of p){b.set(x,o);o+=x.length}return b}}
+const tdec=new TextDecoder();
+const tstr=(b,o,l)=>{let e=o;while(e<o+l&&b[e])e++;return tdec.decode(b.subarray(o,e))};
+const toct=(b,o,l)=>parseInt(tstr(b,o,l).trim()||'0',8)||0;
+$('#restoreFile').addEventListener('change',async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;
+  if(!confirm('Put the files from '+file.name+' onto the card? Files with the same name are replaced; nothing else is deleted.'))return;
+  busy(true);bar(0);const t0=Date.now();let done=0,skipped=0,bytes=0;const failed=[];
+  try{
+    let stream=file.stream();const counter=new TransformStream({transform(c,ctl){readIn+=c.length;ctl.enqueue(c)}});let readIn=0;
+    stream=stream.pipeThrough(counter);
+    if(/\.(gz|tgz)$/i.test(file.name))stream=stream.pipeThrough(new DecompressionStream('gzip'));
+    const have=$('#skipSame').checked?new Map(await fetch('/api/board/card/list').then(r=>r.json())):new Map();
+    const tr=new TarReader(stream);let longName=null;
+    for(;;){
+      const h=await tr.block();if(h.every(x=>x===0))break;
+      const type=String.fromCharCode(h[156]||48),size=toct(h,124,12),padded=Math.ceil(size/512)*512;
+      let name=tstr(h,0,100);const prefix=tdec.decode(h.subarray(257,262))==='ustar'?tstr(h,345,155):'';if(prefix)name=prefix+'/'+name;
+      if(type==='L'){const p=await tr.take(padded);longName=tdec.decode(new Uint8Array(await new Blob(p).arrayBuffer())).replace(/\0[\s\S]*$/,'');continue}
+      if(longName){name=longName;longName=null}
+      if(type!=='0'&&type!=='7'){await tr.take(padded);continue}            // folders and anything else: skip
+      const path='/'+name.replace(/^\.?\/+/,'');
+      const parts=size?await tr.take(size):[];if(padded>size)await tr.take(padded-size);
+      bar(readIn/file.size);
+      if(have.get(path)===size){skipped++;continue}
+      let ok=false,why='';
+      for(let t=0;t<3&&!ok;t++){
+        cardMsg('Restoring '+(done+skipped+1)+': '+esc(path)+(t?' (try '+(t+1)+')':'')+' · '+fmt(bytes)+' sent · '+mins((Date.now()-t0)/1000));
+        try{const r=await fetch('/api/board/card/file?path='+encodeURIComponent(path),{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:new Blob(parts)});
+          const j=await r.json().catch(()=>({}));ok=r.ok&&j.size===size;why=j.error||('answer '+r.status)}catch(err){why=err.message;await new Promise(r=>setTimeout(r,3000))}}
+      if(ok){done++;bytes+=size}else failed.push(path+' ('+why+')');
+    }
+    bar(1);cardMsg('Restore finished: '+done+' files put on the card'+(skipped?', '+skipped+' already there':'')+' in '+mins((Date.now()-t0)/1000)+'.'+(failed.length?'<br><b>Not saved ('+failed.length+'):</b><br>'+failed.map(esc).join('<br>'):''),failed.length>0)
+  }catch(err){cardMsg('Restore stopped: '+esc(err.message)+'. '+done+' files were put on the card before that.',1)}
+  busy(false);load()});
+
 load();loadAdmin();setInterval(()=>{load();loadAdmin()},15000);
+setTimeout(loadCard,800);
 </script>
 </body>
 </html>

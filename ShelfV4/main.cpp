@@ -397,7 +397,7 @@ class ShelfHandler : public AsyncWebHandler {
       Body* b = (Body*)malloc(sizeof(Body) + (ram ? total : UPLOAD_BUF));
       if (!b) return;
       memset(b, 0, sizeof(Body));
-      b->magic = BODY_MAGIC; b->len = total; b->tooBig = total > BODY_MAX;
+      b->magic = BODY_MAGIC; b->len = total; b->tooBig = total > BODY_MAX && !isCardFileUpload(r->url());   // card restores can be big
       if (!ram && !b->tooBig) {
         b->inFile = true;
         snprintf(b->path, sizeof b->path, TMP_ROOT "/b%08x.json", (unsigned)esp_random());
@@ -451,7 +451,7 @@ class ShelfHandler : public AsyncWebHandler {
       return;
     }
     if (serveContent(r, url)) return;
-    bool done = handleBoardApi(r, url, m) || handleComsApi(r, url, m) || handleMessagingApi(r, url, m) || handleFilesApi(r, url, m) || handleToolsApi(r, url, m);
+    bool done = handleCardApi(r, url, m) || handleBoardApi(r, url, m) || handleComsApi(r, url, m) || handleMessagingApi(r, url, m) || handleFilesApi(r, url, m) || handleToolsApi(r, url, m);
     if (!done) sendErr(r, 404, "Not found");
     cleanup(r);
   }
