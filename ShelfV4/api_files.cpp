@@ -14,10 +14,10 @@ static String thumbPath(const char* kind, const String& cat, const String& name)
 static bool thumbable(const String& cat) { return cat == "Games" || cat == "Programs" || cat == "Books"; }
 
 // ------------------------------------------------------------ category counts (cached)
-static int counts[6] = {-1, -1, -1, -1, -1, -1};
+static int counts[NUM_CATEGORIES] = {-1, -1, -1, -1, -1, -1, -1};
 void invalidateCounts() { for (int& c : counts) c = -1; statsDirty = true; }
 int countCategory(const String& cat) {
-  for (int i = 0; i < 6; i++) if (cat == CATEGORIES[i]) {
+  for (int i = 0; i < NUM_CATEGORIES; i++) if (cat == CATEGORIES[i]) {
     if (counts[i] >= 0) return counts[i];
     int n = 0;
     std::vector<DirEnt> v; listDir(catDir(cat), v);
@@ -352,7 +352,7 @@ static void playInfo(AsyncWebServerRequest* r) {
 bool handleFilesApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m) {
   if (url == "/api/categories" && m == HTTP_GET) {
     String s = "[";
-    for (int i = 0; i < 6; i++) { if (i) s += ","; s += String("{\"name\":\"") + CATEGORIES[i] + "\",\"count\":" + countCategory(CATEGORIES[i]) + "}"; }
+    for (int i = 0; i < NUM_CATEGORIES; i++) { if (i) s += ","; s += String("{\"name\":\"") + CATEGORIES[i] + "\",\"count\":" + countCategory(CATEGORIES[i]) + "}"; }
     sendJson(r, 200, s + "]"); return true;
   }
   if (url == "/api/files" && m == HTTP_GET) {

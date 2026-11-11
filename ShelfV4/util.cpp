@@ -6,7 +6,7 @@
 #include "ff.h"
 #include <algorithm>
 
-const char* const CATEGORIES[6] = {"Pictures", "Music", "Videos", "Games", "Programs", "Books"};
+const char* const CATEGORIES[NUM_CATEGORIES] = {"Pictures", "Music", "MIDI", "Videos", "Games", "Programs", "Books"};
 bool isCategory(const String& c) { for (auto x : CATEGORIES) if (c == x) return true; return false; }
 
 SpiRamAllocator psAlloc;

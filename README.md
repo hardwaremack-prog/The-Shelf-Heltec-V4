@@ -12,7 +12,7 @@
 
 | ✅ Included | 💻 Needs The Shelf on a computer |
 |---|---|
-| Pictures (grid, slideshow, photo editor), Music (shuffle, play counts, artist and cover art read from your MP3s' own tags, and **MIDI files** (`.mid`, `.midi`, `.kar`) played by a built-in General MIDI synth), Videos, Games (`.html` and zipped HTML games play in the page), Programs, Books (PDF reader and cover thumbnails) | The AI assistant and Create with AI |
+| Pictures (grid, slideshow, photo editor), Music (shuffle, play counts, artist and cover art read from your MP3s' own tags), **MIDI** (its own shelf: `.mid`, `.midi`, `.kar` files played by a built-in General MIDI synth, with the same player, shuffle and play counts), Videos, Games (`.html` and zipped HTML games play in the page), Programs, Books (PDF reader and cover thumbnails) | The AI assistant and Create with AI |
 | Home: bulletin board with notes, pasted pictures and videos, quick links, weather | Remote desktop (VNC) |
 | Notes, Docs, Sheets, Slides, Draw | Online album-art lookup, tag editing, Standardize names, Remove duplicates, Export |
 | Tidy Suite | Big Transfer, backup/restore zips, spreadsheet import |
@@ -68,7 +68,7 @@ The V3 gets the same Shelf, the same tabs and the same 900MHz Coms. Its mesh set
 
 ### On the card
 
-Your shelves are normal folders at the top of the card: `Pictures`, `Music`, `Videos`, `Games`, `Programs`, `Books`. Pop the card into a computer and copy music or photos straight in. Put files directly in those folders, because subfolders inside a shelf aren't shown (the same as The Shelf). Notes, docs, drawings, play counts, thumbnails and messages live in the hidden `.shelf` folder.
+Your shelves are normal folders at the top of the card: `Pictures`, `Music`, `MIDI`, `Videos`, `Games`, `Programs`, `Books`. Pop the card into a computer and copy music or photos straight in. Put files directly in those folders, because subfolders inside a shelf aren't shown (the same as The Shelf). Notes, docs, drawings, play counts, thumbnails and messages live in the hidden `.shelf` folder.
 
 ## First-time setup
 

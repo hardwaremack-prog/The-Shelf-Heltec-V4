@@ -1,4 +1,5 @@
 /* The Shelf for Heltec V4: hide the parts that need The Shelf on a computer. */
+:root { --cat-MIDI: #8E7CF0; }   /* the MIDI shelf */
 #powerToggleRow, #localhostOnlyToggleRow, #authIndicator, .power-toggle-group, #secureModeToggleRow, #openWriteToggleRow,
 #imagineBtn, #standardizeNamesBtn, #fetchArtBtn, #clearArtBtn, #exportListBtn, #removeDuplicatesBtn,
 .track-edit-tags, .portal-section.backup-section,

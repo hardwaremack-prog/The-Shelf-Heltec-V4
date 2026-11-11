@@ -15,7 +15,8 @@ extern uint64_t storeTotal, storeUsed;
 
 // Shelves live at the root of the card (so the card reads like a normal
 // drive in a PC). Everything else The Shelf keeps is under /.shelf.
-extern const char* const CATEGORIES[6];
+#define NUM_CATEGORIES 7
+extern const char* const CATEGORIES[NUM_CATEGORIES];
 bool isCategory(const String& c);
 #define DATA_ROOT   "/.shelf/data"
 #define PLAY_ROOT   "/.shelf/play"

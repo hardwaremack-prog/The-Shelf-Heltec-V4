@@ -44,12 +44,29 @@ app, n1 = re.subn(r"(\n(\s*)\{ key: 'tidysuite',)", r"\n\2{ key: 'coms', label: 
 app, n2 = re.subn(r"(else if \(key === 'tidysuite'\) loadTidySuiteView\(\);)", r"\1\n  else if (key === 'coms') window.loadComsView();", app, count=1)
 if not (n1 and n2):
     sys.exit("Couldn't add the 900MHz Coms tab to app.js -- The Shelf's layout changed; update pack_www.py")
+# a seventh shelf, MIDI: listed, uploaded and played like Music (board-ui/midi.js plays the files)
+def must(pattern, repl, count=1):
+    global app
+    app, n = re.subn(pattern, repl, app, count=count)
+    if not n:
+        sys.exit("Couldn't add the MIDI shelf (" + pattern[:40] + ") -- The Shelf's layout changed; update pack_www.py")
+must(r"(  Music: 'var\(--cat-Music\)',\n)", r"\1  MIDI: 'var(--cat-MIDI)',\n")
+must(r"(const PLAY_COUNT_CATEGORIES = \['Music',)", r"\1 'MIDI',")
+app = "const isMusicShelf = c => c === 'Music' || c === 'MIDI';\n" + app
+must(r"if \(state\.category !== 'Music' \|\| !state\.currentTrackName\) return;", "if (!isMusicShelf(state.category) || !state.currentTrackName) return;")
+must(r"if \(state\.category === 'Music'\) opts\.push\(\['recent'", "if (isMusicShelf(state.category)) opts.push(['recent'")
+must(r"el\('#shuffleAllBtn'\)\.hidden = state\.category !== 'Music'", "el('#shuffleAllBtn').hidden = !isMusicShelf(state.category)")
+must(r"\n  if \(state\.category === 'Music'\) \{", "\n  if (isMusicShelf(state.category)) {")
+must(r"recordPlay\('Music', f\.name\);", "recordPlay(String(f.url || '').startsWith('/shared/MIDI/') ? 'MIDI' : 'Music', f.name);")
 (stage / "app.js").write_text(app, encoding="utf-8")
 
 html = (stage / "index.html").read_text(encoding="utf-8")
 html = html.replace('<link rel="stylesheet" href="style.css">',
                     '<link rel="stylesheet" href="style.css">\n<link rel="stylesheet" href="board.css">', 1)
 html = html.replace('<script src="app.js"></script>', '<script src="app.js"></script>\n<script src="board.js"></script>\n<script src="midi.js"></script>', 1)
+html = html.replace('<option value="Music">Music</option>', '<option value="Music">Music</option>\n      <option value="MIDI">MIDI</option>', 1)
+if '<option value="MIDI">' not in html:
+    sys.exit("Couldn't add MIDI to the upload shelf list in index.html")
 html = html.replace("<title>The Shelf</title>", f"<title>The Shelf · Heltec {board}</title>", 1)
 if "board.js" not in html or "board.css" not in html:
     sys.exit("Couldn't add board.js/board.css to index.html")
