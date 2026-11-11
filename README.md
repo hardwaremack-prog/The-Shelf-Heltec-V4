@@ -27,23 +27,33 @@ The buttons for those computer-only features are hidden on the board, and the AI
 | Part | Notes |
 |---|---|
 | Heltec WiFi LoRa 32 **V4** or **V3** | The standard V4 (ESP32-S3R2, 2 MB PSRAM), the V4-R8 (8 MB PSRAM), or the V3 (8 MB flash, no PSRAM). Each has its own install button |
-| 3.3 V SPI microSD module | Same module and wiring as [Heltec Shelf Lite](https://github.com/hardwaremack-prog/Heltec-Shelf-Lite--Wifi-Thumbdrive) |
+| 3.3 V SPI microSD module | The small blue 6-pin module whose pins read **3v3 · CS · MOSI · CLK · MISO · GND** (square pad = 3v3). It has no voltage regulator, so it goes to **3V3**, never 5V |
 | microSD card | FAT32. A 32 GB card works out of the box |
+
+### Wiring the microSD card (V4 and V3)
+
+From **v1.6.0** the card uses four neighbouring pins on the J3 row, the same layout as Heltec V4 MP3 + BT:
 
 ![microSD wiring for The Shelf on Heltec V4](docs/sd-wiring-shelf-v4.png)
 
 | microSD module | Heltec V4 / V3 |
 |---|---|
-| 3v3 (VCC) | **3V3** |
+| 3v3 | **3V3** |
 | GND | GND |
-| CS | GPIO 4 |
-| MISO | GPIO 6 |
-| CLK (SCK) | GPIO 47 |
-| MOSI | GPIO 48 |
+| CS | GPIO 42 |
+| MOSI | GPIO 41 |
+| CLK (SCK) | GPIO 40 |
+| MISO | GPIO 39 |
 
-The V3 uses the same pins: GPIO 4 and 6 are on one header row, 47 and 48 on the other.
+The V3's J3 row is laid out the same way ([V3 diagram](docs/sd-wiring-shelf-v3.png)). On a V4, GPIO 39–42 are shared with the GNSS connector, so **leave the GNSS kit unplugged**.
 
-The diagram matches the small blue 6-pin module whose pins read **3v3 · CS · MOSI · CLK · MISO · GND** (square pad = 3v3). That module has no voltage regulator, so it must go to **3V3**, never 5V.
+**Easier: plug it straight in.** CS · MOSI · CLK · MISO sit on 42 · 41 · 40 · 39 in the same order as the module's pins, so the module plugs straight into the header. Bend up (or clip) its 3v3 and GND pins so they skip GPIO 45 and 38, then add two short jumpers to the GND and 3V3 pins at the start of the row.
+
+![Inline microSD mounting on the Heltec V4 / V3](docs/sd-inline-shelf.png)
+
+**Heltec V4-R8:** its GPIO 40 switches the screen's power, so the R8 build keeps the older layout: CS 4, MISO 6, CLK 47, MOSI 48 ([R8 diagram](docs/sd-wiring-shelf-v4-r8.png)).
+
+> **Upgrading from v1.5 or earlier on a V4 or V3?** The card moved from CS 4 · MISO 6 · CLK 47 · MOSI 48 to the pins above. Move the four signal wires, or the board won't find the card and will use its own flash instead.
 
 With no card, The Shelf keeps files in the board's own flash: about 10 MB on a V4, about 4 MB on a V3. The screen shows **SD** or **FLASH** in the corner.
 

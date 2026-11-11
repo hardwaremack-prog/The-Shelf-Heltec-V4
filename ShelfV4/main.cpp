@@ -73,8 +73,8 @@ static void powerOLED() {
 #elif CONFIG_SPIRAM_MODE_OCT
   bool ok = tryVext(PIN_VEXT_R8, LOW) || tryVext(PIN_VEXT_R8, HIGH);
 #else
+  // (no fallback to GPIO40 here: on the standard V4 that pin is the microSD clock)
   bool ok = tryVext(PIN_VEXT, LOW) || tryVext(PIN_VEXT, HIGH);
-  if (!ok) { pinMode(PIN_VEXT, INPUT); ok = tryVext(PIN_VEXT_R8, LOW) || tryVext(PIN_VEXT_R8, HIGH); }
 #endif
   (void)ok;
   oledOK = true;
@@ -303,7 +303,7 @@ bool handleBoardApi(AsyncWebServerRequest* r, const String& url, WebRequestMetho
       ",\"setup\":" + (firstSetup ? "true" : "false") + ",\"homeSsid\":\"" + jsonEsc(wifiSSID) + "\",\"apOpen\":" + (ownPass.length() >= 8 ? "false" : "true") + ",\"apPass\":\"" + jsonEsc(ownPass) + "\"" +
       ",\"clients\":" + (apActive ? WiFi.softAPgetStationNum() : 0) + ",\"timeSet\":" + (time(nullptr) > 1700000000 ? "true" : "false") +
       ",\"uptime\":" + (millis() / 1000) +
-      ",\"heap\":" + ESP.getFreeHeap() + ",\"psram\":" + ESP.getPsramSize() + "}";
+      ",\"sdPins\":\"" SD_PINS "\",\"heap\":" + ESP.getFreeHeap() + ",\"psram\":" + ESP.getPsramSize() + "}";
     sendJson(r, 200, s); return true;
   }
   if (url == "/api/board/wifi/scan") {

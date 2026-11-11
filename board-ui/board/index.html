@@ -170,7 +170,7 @@ async function load(){try{I=await fetch('/api/board/info').then(r=>r.json())}cat
   $('#hostShow').textContent='http://'+I.host+'.local';
   $('#storeTip').innerHTML=I.storage==='microSD card'
     ?'Files are on the microSD card in normal folders (Pictures, Music, Videos, Games, Programs, Books), so the card also works in a computer. The Shelf\'s own data is in the hidden <b>.shelf</b> folder.'
-    :'No microSD card was found, so files are kept in the board\'s own flash ('+fmt(I.total)+'). Wire up a microSD module (CS 4, MISO 6, SCK 47, MOSI 48) for far more room.'}
+    :'No microSD card was found, so files are kept in the board\'s own flash ('+fmt(I.total)+'). Wire up a microSD module ('+esc(I.sdPins||'see the installer page')+') for far more room.'}
 async function scan(){const box=$('#nets');box.style.display='block';box.innerHTML='<div class="empty">Looking for networks…</div>';
   for(let i=0;i<25;i++){let j;try{j=await fetch('/api/board/wifi/scan').then(r=>r.json())}catch(e){break}
     if(!j.scanning){const seen={};const nets=j.nets.filter(n=>n.ssid&&!seen[n.ssid]&&(seen[n.ssid]=1)).sort((a,b)=>b.rssi-a.rssi);

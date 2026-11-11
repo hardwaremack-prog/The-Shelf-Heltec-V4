@@ -82,18 +82,20 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
   <p class="muted" style="margin-top:10px">Not sure which you have? Install the standard V4 one. The board's settings page shows how much PSRAM it found; if it lists none, reinstall with the R8 button.</p>
 
   <h2>2. Wire a microSD card</h2>
-  <p>Use a 3.3 V SPI microSD module (the same wiring as Heltec Shelf Lite, and the same pins on the V3). With no card fitted, The Shelf uses about 10 MB of a V4's own flash, or about 4 MB of a V3's.</p>
-  <img src="sd-wiring-shelf-v4.png" alt="microSD wiring diagram: GND to GND, 3v3 to 3V3, CS to GPIO 4, MISO to GPIO 6, CLK to GPIO 47, MOSI to GPIO 48" style="width:100%;max-width:900px;border-radius:10px;margin:8px 0 14px">
+  <p>Use the small 3.3 V SPI module whose pins read 3v3 · CS · MOSI · CLK · MISO · GND. It has no regulator: 3V3 only, never 5V. The card goes on four neighbouring J3 pins, the same on the V4 and the V3. With no card fitted, The Shelf uses about 10 MB of a V4's own flash, or about 4 MB of a V3's.</p>
+  <img src="sd-wiring-shelf-v4.png" alt="microSD wiring: 3v3 to 3V3, GND to GND, CS to GPIO 42, MOSI to GPIO 41, CLK to GPIO 40, MISO to GPIO 39" style="width:100%;max-width:900px;border-radius:10px;margin:8px 0 14px">
   <table>
     <tr><th>Module pin</th><th>Heltec V4 / V3 pin</th></tr>
-    <tr><td>3v3 (VCC)</td><td><b>3V3</b></td></tr>
+    <tr><td>3v3</td><td><b>3V3</b></td></tr>
     <tr><td>GND</td><td>GND</td></tr>
-    <tr><td>CS</td><td>GPIO 4</td></tr>
-    <tr><td>MISO</td><td>GPIO 6</td></tr>
-    <tr><td>CLK (SCK)</td><td>GPIO 47</td></tr>
-    <tr><td>MOSI</td><td>GPIO 48</td></tr>
+    <tr><td>CS</td><td>GPIO 42</td></tr>
+    <tr><td>MOSI</td><td>GPIO 41</td></tr>
+    <tr><td>CLK (SCK)</td><td>GPIO 40</td></tr>
+    <tr><td>MISO</td><td>GPIO 39</td></tr>
   </table>
-  <p class="muted" style="margin-top:10px">Made for the small 6-pin module labelled 3v3 · CS · MOSI · CLK · MISO · GND. It has no regulator: 3V3 only, never 5V. GPIO 47 and 48 are on the other header row from 4 and 6. Go by the labels on the board. Use a FAT32 card; 32 GB cards come that way.</p>
+  <p style="margin-top:14px"><b>Or plug it straight in.</b> 42 · 41 · 40 · 39 are in the same order as the module's CS · MOSI · CLK · MISO. Bend up its 3v3 and GND pins so they skip GPIO 45 and 38, then add two short jumpers to GND and 3V3 at the start of the row.</p>
+  <img src="sd-inline-shelf.png" alt="Inline microSD mounting" style="width:100%;max-width:900px;border-radius:10px;margin:8px 0 14px">
+  <p class="muted">On a V4, leave the GNSS kit unplugged: it shares GPIO 39–42. <b>V4-R8:</b> GPIO 40 powers its screen, so it keeps the older wiring: CS 4, MISO 6, CLK 47, MOSI 48 (<a href="sd-wiring-shelf-v4-r8.png">R8 diagram</a>). Coming from v1.5 or earlier on a V4 or V3? Move the four signal wires to the new pins. Use a FAT32 card; 32 GB cards come that way.</p>
 
   <h2>3. Connect it to your Wi-Fi</h2>
   <ol>
