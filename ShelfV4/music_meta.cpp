@@ -4,6 +4,7 @@
 #include "shelf.h"
 
 static volatile bool dirty = true;
+volatile int musicReaders = 0;      // Music lists being sent right now: the scan waits for them
 static volatile uint32_t dirtyAt = 0;
 void markMusicDirty() { dirty = true; dirtyAt = millis(); }
 
@@ -105,7 +106,7 @@ static void musicMetaRun();
 void musicMetaLoop() {
   if (!dirty || millis() - dirtyAt < 4000) return;
   // Short of memory (a plain ESP32 with Bluetooth on, say): try again later rather than crash.
-  if (ESP.getMaxAllocHeap() < 24 * 1024) { dirtyAt = millis() + 26000; return; }
+  if (ESP.getMaxAllocHeap() < 24 * 1024 || musicReaders > 0) { dirtyAt = millis() + 26000; return; }
   dirty = false;
   try { musicMetaRun(); }
   catch (...) { dirty = true; dirtyAt = millis() + 56000; }   // ran out part-way: back off a minute
@@ -135,6 +136,9 @@ static void musicMetaRun() {
   int done = 0;
   for (auto& f : files) {
     if (dirty) break;                               // new uploads arrived; start over shortly
+    // someone opened Music, or memory is getting short (a board without PSRAM): save what's
+    // done, let go of everything, and carry on later
+    if (musicReaders > 0 || ESP.getMaxAllocHeap() < 16 * 1024) { dirty = true; dirtyAt = millis() + 26000; break; }
     JsonVariant e = meta[f.first];
     if (!e.isNull() && (e["s"] | 0u) == f.second) continue;
     String artist, title;

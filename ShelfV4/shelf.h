@@ -136,6 +136,7 @@ bool handleCardApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod
 bool isCardFileUpload(const String& url);
 // bt.cpp: Bluetooth headsets (plain ESP32 only; empty elsewhere)
 void btBegin();
+extern volatile int musicReaders;   // music_meta.cpp
 void btTick();
 bool btActive();
 bool handleBtApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);

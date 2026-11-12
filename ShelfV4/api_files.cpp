@@ -81,6 +81,8 @@ struct ListState {
   size_t i = 0;              // next entry to write
   String chunk; size_t pos = 0;
   bool opened = false, closed = false;
+  bool reader = false;       // counted in musicReaders while this list is being sent
+  ~ListState() { if (reader) musicReaders--; }
 };
 
 static void entryJson(ListState& s, const Entry& e, String& o) {
@@ -138,6 +140,7 @@ static size_t fillList(ListState& s, uint8_t* buf, size_t maxLen) {
 static void listFiles(AsyncWebServerRequest* r, const String& cat) {
   auto s = std::make_shared<ListState>();
   s->cat = cat;
+  if (cat == "Music") { musicReaders++; s->reader = true; }   // the background scan waits
   {
     std::vector<DirEnt> all; listDir(catDir(cat), all);
     s->v.reserve(all.size());
@@ -149,7 +152,9 @@ static void listFiles(AsyncWebServerRequest* r, const String& cat) {
   else if (thumbable(cat)) s->haveThumb = dirNames(DATA_ROOT "/file-thumbs");
   std::sort(s->v.begin(), s->v.end(), [](const Entry& a, const Entry& b) { return a.mt > b.mt; });
   loadJsonFile(PLAYS_FILE, s->plays);
-  if (cat == "Music") loadJsonFile(META_FILE, s->meta);
+  // Artists from the songs' tags. Without PSRAM (a plain ESP32) the whole file doesn't fit next to
+  // everything else, so the list goes without them there (most songs are named "Artist - Title").
+  if (cat == "Music" && ESP.getPsramSize() > 0) loadJsonFile(META_FILE, s->meta);
   AsyncWebServerResponse* res = r->beginChunkedResponse("application/json",
     [s](uint8_t* buf, size_t maxLen, size_t) -> size_t { return fillList(*s, buf, maxLen); });
   res->addHeader("Cache-Control", "no-store");
