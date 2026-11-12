@@ -65,6 +65,11 @@ if 'isMusicShelf' not in app:          # The Shelf has had the MIDI shelf built 
     must(r"el\('#shuffleAllBtn'\)\.hidden = state\.category !== 'Music'", "el('#shuffleAllBtn').hidden = !isMusicShelf(state.category)")
     must(r"\n  if \(state\.category === 'Music'\) \{", "\n  if (isMusicShelf(state.category)) {")
     must(r"recordPlay\('Music', f\.name\);", "recordPlay(String(f.url || '').startsWith('/shared/MIDI/') ? 'MIDI' : 'Music', f.name);")
+# pictures, cover art and thumbnails load through board.js's queue (a few at a time) instead of all
+# at once: a board can't send a screenful of full-size photos together
+app, nimg = re.subn(r'<img src="(\$\{f\.(?:url|artUrl|thumbUrl)\})"( alt="[^"]*")? loading="lazy">', r'<img data-qsrc="\1"\2>', app)
+if not nimg:
+    print("note: no shelf images found to queue (The Shelf's layout changed?)")
 (stage / "app.js").write_text(app, encoding="utf-8")
 
 html = (stage / "index.html").read_text(encoding="utf-8")

@@ -342,6 +342,42 @@
   };
 })();
 
+// ---- Pictures, cover art and thumbnails: a few at a time ----
+// The shelf pages ask for every picture on screen at once. A board sends them slowly, and one
+// without PSRAM (a plain ESP32) runs out of memory sending several big photos together. Here the
+// pictures wait in a queue and load as they come near the screen: one at a time on a board without
+// PSRAM, four at a time otherwise.
+(function () {
+  let limit = 2, active = 0;
+  const q = [];
+  fetch('/api/board/info').then(r => r.json()).then(i => { limit = i.psram ? 4 : 1; pump(); }).catch(() => {});
+  function pump() {
+    while (active < limit && q.length) {
+      const img = q.shift();
+      if (!img.isConnected || img.getAttribute('src')) continue;
+      active++;
+      let finished = false;
+      const done = () => { if (finished) return; finished = true; active--; clearTimeout(t); setTimeout(pump, 0); };
+      const t = setTimeout(done, 20000);                       // a stuck picture doesn't hold up the rest
+      img.addEventListener('load', done, { once: true });
+      img.addEventListener('error', done, { once: true });
+      img.src = img.dataset.qsrc;
+    }
+  }
+  const io = 'IntersectionObserver' in window ? new IntersectionObserver(es => {
+    for (const e of es) if (e.isIntersecting) { io.unobserve(e.target); q.push(e.target); }
+    pump();
+  }, { rootMargin: '400px' }) : null;
+  const watch = img => { if (img.getAttribute('src')) return; if (io) io.observe(img); else { q.push(img); pump(); } };
+  new MutationObserver(ms => {
+    for (const m of ms) for (const n of m.addedNodes) {
+      if (n.nodeType !== 1) continue;
+      if (n.matches && n.matches('img[data-qsrc]')) watch(n);
+      if (n.querySelectorAll) n.querySelectorAll('img[data-qsrc]').forEach(watch);
+    }
+  }).observe(document.documentElement, { childList: true, subtree: true });
+})();
+
 // ---- Cover art and thumbnails: try again when the board was too busy ----
 // A shelf asks for a picture per song or game, all at once. A board without PSRAM (a plain
 // ESP32) can't always serve them all together, so a picture that fails or gets cut off is
