@@ -342,6 +342,24 @@
   };
 })();
 
+// ---- Cover art and thumbnails: try again when the board was too busy ----
+// A shelf asks for a picture per song or game, all at once. A board without PSRAM (a plain
+// ESP32) can't always serve them all together, so a picture that fails or gets cut off is
+// asked for again a moment later, up to 4 times, spread out so they don't all come back at once.
+(function () {
+  const isArt = img => /\/data-files\/(album-art|video-thumbs|file-thumbs)\//.test(img.getAttribute('src') || '');
+  document.addEventListener('error', e => {
+    const img = e.target;
+    if (!(img instanceof HTMLImageElement) || !isArt(img)) return;
+    const n = +(img.dataset.artRetry || 0);
+    if (n >= 4) return;
+    img.dataset.artRetry = n + 1;
+    setTimeout(() => {
+      try { const u = new URL(img.getAttribute('src'), location.href); u.searchParams.set('r', n + 1); img.src = u.pathname + u.search; } catch (x) {}
+    }, 700 + Math.random() * 1500 * (n + 1));
+  }, true);
+})();
+
 // ---- Bluetooth (plain ESP32 boards only): pair a headset and play the Music shelf on it ----
 // The board itself plays the songs from its card to the headset, so nothing has to stay open
 // on the phone. Only MP3 and WAV songs can go to the headset.
