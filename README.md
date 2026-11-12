@@ -236,6 +236,10 @@ The same Shelf runs on an ESP32-WROOM dev board with 4 MB of flash. Install it w
 
 ![microSD wiring on an ESP32](docs/sd-wiring-shelf-esp32.png)
 
+Wiring it with the board upside down (pins pointing up)? The rows swap places:
+
+![microSD wiring on an ESP32, board flipped over](docs/sd-wiring-shelf-esp32-flipped.png)
+
 ## Backups
 
 - **The whole board, over USB.** On the [installer page](https://hardwaremack-prog.github.io/The-Shelf-Heltec-V4900mhzMesh/#backup), **Back up board** reads all of the board's flash (16 MB on a V4, 8 MB on a V3) into one `.bin.gz`: firmware, Wi-Fi, admin password, Coms history and any on-board files. **Restore from file** writes it back to the same board or a replacement of the same kind. Chrome or Edge on a computer.
