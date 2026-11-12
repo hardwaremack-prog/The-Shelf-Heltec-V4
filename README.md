@@ -242,6 +242,10 @@ Wiring it with the board upside down (pins pointing up)? The rows swap places:
 
 ![microSD wiring on an ESP32, board flipped over](docs/sd-wiring-shelf-esp32-flipped.png)
 
+**In line, one jumper.** On a 38-pin board the module can plug straight onto five header pins in a row, GND · 19 · 18 · 5 · 17, turned around so its GND lands on GND. Its 3v3 pin would land on GPIO 16, so bend that one pin up (or cut it short) and run a single jumper from it to 3V3. The firmware tries the usual wiring first, then this one (MOSI 5, CS 17), so either works.
+
+![microSD plugged in line on an ESP32 with one jumper](docs/sd-wiring-shelf-esp32-inline.png)
+
 ## Backups
 
 - **The whole board, over USB.** On the [installer page](https://hardwaremack-prog.github.io/The-Shelf-Heltec-V4900mhzMesh/#backup), **Back up board** reads all of the board's flash (16 MB on a V4, 8 MB on a V3) into one `.bin.gz`: firmware, Wi-Fi, admin password, Coms history and any on-board files. **Restore from file** writes it back to the same board or a replacement of the same kind. Chrome or Edge on a computer.

@@ -234,10 +234,26 @@ static void setupStorage() {
   // floats while it's busy, and the board can misread "busy" or "write accepted", so writes
   // fail now and then. The ESP32's own pull-ups fix that (as a 10k resistor would).
   for (int pin : {SD_MISO, SD_MOSI, SD_CS}) gpio_pullup_en((gpio_num_t)pin);
+#ifdef SD_CS_INLINE
+  pinMode(SD_CS_INLINE, INPUT_PULLUP);   // keeps an in-line card deselected while the usual wiring is tried
+#endif
   // 10 MHz: plenty for Wi-Fi speeds, and more margin than 20 MHz on jumpers and headers.
   if (SD.begin(SD_CS, sdSPI, 10000000, "/sd", 10)) onSD = true;
   else if (SD.begin(SD_CS, sdSPI, 4000000, "/sd", 10)) onSD = true;   // slower, for long wires
   if (onSD && SD.cardType() == CARD_NONE) { SD.end(); onSD = false; }
+#ifdef SD_CS_INLINE
+  // In-line wiring: the module plugged straight onto GND · 19 · 18 · 5 · 17 (one jumper for 3V3).
+  // Same clock and data-out pins; data-in moves to GPIO 5 and chip-select to 17.
+  if (!onSD) {
+    SD.end(); sdSPI.end();
+    sdSPI.begin(SD_SCK, SD_MISO, SD_MOSI_INLINE, SD_CS_INLINE);
+    for (int pin : {SD_MISO, SD_MOSI_INLINE, SD_CS_INLINE}) gpio_pullup_en((gpio_num_t)pin);
+    if (SD.begin(SD_CS_INLINE, sdSPI, 10000000, "/sd", 10)) onSD = true;
+    else if (SD.begin(SD_CS_INLINE, sdSPI, 4000000, "/sd", 10)) onSD = true;
+    if (onSD && SD.cardType() == CARD_NONE) { SD.end(); onSD = false; }
+    if (onSD) Serial.println("[shelf] microSD found on the in-line wiring (MOSI 5, CS 17)");
+  }
+#endif
   if (onSD) store = &SD;
   else {
     oledMsg("THE SHELF " BOARD_SHORT, "No microSD found", "Using board flash", "(first boot formats)");

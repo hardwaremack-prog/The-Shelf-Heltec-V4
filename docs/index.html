@@ -115,6 +115,7 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
   <p style="margin-top:14px"><b>Plain ESP32 (NodeMCU / DevKitC):</b> the card goes on the ESP32's usual SPI pins. It must have a card: the 4 MB of flash is all taken by the firmware, its update loader and the web app. A 128&times;64 SSD1306 screen on GPIO 21 (SDA) and 22 (SCL) is optional; with one, it shows the same status screen as the Heltec boards.</p>
   <img src="sd-wiring-shelf-esp32.png" alt="microSD wiring on an ESP32: 3v3 to 3V3, GND to GND, CS to GPIO 5, MOSI to GPIO 23, CLK to GPIO 18, MISO to GPIO 19" style="width:100%;max-width:900px;border-radius:10px;margin:8px 0 14px">
   <p class="muted">Wiring it with the board upside down (pins pointing up)? <a href="sd-wiring-shelf-esp32-flipped.png">Flipped-over diagram</a>.</p>
+  <p class="muted"><b>Fewer wires:</b> on a 38-pin board the module can plug straight onto the header at GND · 19 · 18 · 5 · 17, turned around, with one jumper for 3V3 (firmware 1.10.1 and later finds the card on either wiring). <a href="sd-wiring-shelf-esp32-inline.png">In-line diagram</a>.</p>
   <table>
     <tr><th>Module pin</th><th>ESP32 pin</th></tr>
     <tr><td>3v3</td><td><b>3V3</b></td></tr>

@@ -4,7 +4,7 @@
 // Same microSD wiring as Heltec Shelf Lite, so a board wired for that works as-is.
 #pragma once
 
-#define FW_VERSION "1.10.0"
+#define FW_VERSION "1.10.1"
 // SHELF_ESP32: a plain ESP32 dev board (NodeMCU-32S / ESP32-DevKitC, ESP32-D0WD, 4 MB flash):
 // no LoRa radio, no battery, and a screen only if you add one (SSD1306 on GPIO 21/22).
 #if defined(SHELF_ESP32)
@@ -54,6 +54,8 @@
 #define SD_MOSI  23
 #define SD_SCK   18
 #define SD_MISO  19
+#define SD_MOSI_INLINE 5     // in-line wiring (module plugged onto GND·19·18·5·17): tried if the above finds no card
+#define SD_CS_INLINE   17
 #define SD_PINS  "CS 5, MOSI 23, CLK 18, MISO 19"
 #else
 // --- Built in to the board ---
