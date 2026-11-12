@@ -7,7 +7,26 @@
 // Air settings: 915.0 MHz, 125 kHz, SF9, CR 4/5, sync word 0x12, 16-symbol preamble.
 #include "shelf.h"
 #include <SPI.h>
+#ifndef SHELF_NO_RADIO
 #include <RadioLib.h>
+#else
+// No LoRa radio on this board (a plain ESP32): a do-nothing stand-in keeps the rest of Coms
+// compiling (the log, the HTTP API) without linking RadioLib. radioStart() never gets this far.
+#define RADIOLIB_ERR_NONE 0
+#define RADIOLIB_LORA_DETECTED 1
+#define RADIOLIB_SX126X_SYNC_WORD_PRIVATE 0x12
+struct Module { Module(int, int, int, int, SPIClass&) {} };
+struct SX1262 {
+  explicit SX1262(Module*) {}
+  int begin(float, float, int, int, int, int, int, float) { return -1; }
+  void setDio2AsRfSwitch(bool) {} void setCRC(int) {} void setCurrentLimit(float) {}
+  void setPacketReceivedAction(void (*)(void)) {} void clearPacketReceivedAction() {}
+  int startReceive() { return -1; } int sleep() { return 0; }
+  size_t getPacketLength() { return 0; } int readData(uint8_t*, size_t) { return -1; }
+  float getRSSI() { return 0; } float getSNR() { return 0; }
+  int scanChannel() { return 0; } int setOutputPower(int) { return 0; } int transmit(const uint8_t*, size_t) { return -1; }
+};
+#endif
 #include <Preferences.h>
 
 // Heltec V4 radio wiring (from Heltec's datasheet / Meshtastic's heltec_v4 variant)
@@ -113,7 +132,7 @@ bool comsOn() { return enabled && radioUp; }
 static String hex8(uint32_t v) { char b[9]; snprintf(b, sizeof b, "%08x", v); return b; }
 
 static void femOn(bool on) {
-#ifdef SHELF_V3
+#if defined(SHELF_V3) || defined(SHELF_NO_RADIO)
   (void)on; return;                         // the V3 has no front-end module
 #endif
   pinMode(FEM_POWER, OUTPUT); pinMode(FEM_EN, OUTPUT);
@@ -125,7 +144,7 @@ static void femOn(bool on) {
   if (on) delay(5);
 }
 static void femTx(bool tx) {
-#ifdef SHELF_V3
+#if defined(SHELF_V3) || defined(SHELF_NO_RADIO)
   (void)tx; return;
 #endif
   digitalWrite(FEM_CPS, tx ? HIGH : LOW);
@@ -162,6 +181,9 @@ static void loadLog() {
 }
 
 static bool radioStart() {
+#ifdef SHELF_NO_RADIO
+  lastError = "This board has no LoRa radio."; return false;
+#endif
   femOn(true);
   loraSPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_NSS);
   if (!radio) radio = new SX1262(new Module(LORA_NSS, LORA_DIO1, LORA_RST, LORA_BUSY, loraSPI));

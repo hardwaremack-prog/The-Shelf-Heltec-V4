@@ -3,6 +3,18 @@
   "version": "1.9.0",
   "new_install_prompt_erase": true,
   "builds": [
-    { "chipFamily": "ESP32-S3", "parts": [ { "path": "firmware/shelf-v3.bin", "offset": 0 } ] }
+    {
+      "chipFamily": "ESP32-S3",
+      "parts": [
+        {
+          "path": "firmware/shelf-v3-boot.bin",
+          "offset": 0
+        },
+        {
+          "path": "firmware/shelf-v3-main.bin",
+          "offset": 57344
+        }
+      ]
+    }
   ]
 }

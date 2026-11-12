@@ -1,7 +1,11 @@
 // The Shelf for Heltec V4 - the six shelves (Pictures, Music, Videos, Games, Programs, Books)
 // Mirrors the file routes in The Shelf's server.js so its own web app works unchanged.
 #include "shelf.h"
+#if CONFIG_IDF_TARGET_ESP32
+#include <esp32/rom/miniz.h>
+#else
 #include <esp32s3/rom/miniz.h>
+#endif
 #include <algorithm>
 
 static const char* PLAYS_FILE = DATA_ROOT "/play-counts.json";

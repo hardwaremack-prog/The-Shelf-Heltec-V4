@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pack The Shelf's web app (its public/ folder) into a LittleFS image for the board.
 
-    python3 tools/pack_www.py <path-to-the-shelf> <out.bin> [size] [V4|V3]
+    python3 tools/pack_www.py <path-to-the-shelf> <out.bin> [size] [V4|V3|ESP32]
 
 - Uses The Shelf's own index.html, app.js, style.css, pdf.js and Tidy Suite unchanged,
   except: the AI and Big Transfer tabs are taken out (they need a computer), and
@@ -39,9 +39,10 @@ for key in ("ai", "bigfiles"):
 if app == before:
     sys.exit("Couldn't find the TOOLS list in app.js -- The Shelf's layout changed; update pack_www.py")
 app = re.sub(r",(\s*\];\s*\nconst TOOL_LABELS)", r"\1", app)   # no trailing comma left behind
-# add the board's own tab: 900MHz Coms (drawn by board.js)
-app, n1 = re.subn(r"(\n(\s*)\{ key: 'tidysuite',)", r"\n\2{ key: 'coms', label: '900MHz Coms', color: '#E2725B' },\1", app, count=1)
-app, n2 = re.subn(r"(else if \(key === 'tidysuite'\) loadTidySuiteView\(\);)", r"\1\n  else if (key === 'coms') window.loadComsView();", app, count=1)
+# add the board's own tab: 900MHz Coms (drawn by board.js). A plain ESP32 has no LoRa radio.
+has_radio = board != "ESP32"
+app, n1 = re.subn(r"(\n(\s*)\{ key: 'tidysuite',)", r"\n\2{ key: 'coms', label: '900MHz Coms', color: '#E2725B' },\1", app, count=1 if has_radio else 0) if has_radio else (app, 1)
+app, n2 = re.subn(r"(else if \(key === 'tidysuite'\) loadTidySuiteView\(\);)", r"\1\n  else if (key === 'coms') window.loadComsView();", app, count=1) if has_radio else (app, 1)
 if not (n1 and n2):
     sys.exit("Couldn't add the 900MHz Coms tab to app.js -- The Shelf's layout changed; update pack_www.py")
 # a seventh shelf, MIDI: listed, uploaded and played like Music (board-ui/midi.js plays the files)
@@ -70,7 +71,8 @@ if '<option value="MIDI">' not in html:
     html = html.replace('<option value="Music">Music</option>', '<option value="Music">Music</option>\n      <option value="MIDI">MIDI</option>', 1)
 if '<option value="MIDI">' not in html:
     sys.exit("Couldn't add MIDI to the upload shelf list in index.html")
-html = html.replace("<title>The Shelf</title>", f"<title>The Shelf · Heltec {board}</title>", 1)
+label = "ESP32" if board == "ESP32" else f"Heltec {board}"
+html = html.replace("<title>The Shelf</title>", f"<title>The Shelf · {label}</title>", 1)
 if "board.js" not in html or "board.css" not in html:
     sys.exit("Couldn't add board.js/board.css to index.html")
 (stage / "index.html").write_text(html, encoding="utf-8")
@@ -88,7 +90,11 @@ if board != "V4":
         t = f.read_text(encoding="utf-8")
         t = t.replace('<span class="chip">V4</span>', f'<span class="chip">{board}</span>')
         t = t.replace("Heltec V3 and V4", "Heltec V3 and V\x00")   # keep this one as is
-        t = t.replace("Heltec V4", f"Heltec {board}").replace("Heltec V3 and V\x00", "Heltec V3 and V4")
+        t = t.replace("Heltec V4", label).replace("Heltec V3 and V\x00", "Heltec V3 and V4")
+        if board == "ESP32":   # its button is labelled BOOT, and there's no screen unless one is added
+            t = t.replace("The screen sleeps after 5 minutes. Press the board's PRG button to wake it.",
+                          "With a screen added (SSD1306 on GPIO 21/22), it sleeps after 5 minutes; press BOOT to wake it.")
+            t = t.replace("Hold PRG", "Hold BOOT")
         f.write_text(t, encoding="utf-8")
 
 try:

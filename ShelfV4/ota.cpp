@@ -17,7 +17,9 @@
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 
-#if defined(SHELF_V3)
+#if defined(SHELF_ESP32)
+  #define FW_ID "shelf-esp32"
+#elif defined(SHELF_V3)
   #define FW_ID "shelf-v3"
 #elif CONFIG_SPIRAM_MODE_OCT
   #define FW_ID "shelf-v4-r8"
@@ -107,7 +109,7 @@ button.sec{background:transparent;color:var(--text);border:1px solid var(--divid
 </div>
 <div class="card">
   <b>Update from a file</b>
-  <p class="muted" style="margin:6px 0 0">Pick this board's <code>.bin</code> from the installer page (the same file the USB installer uses).</p>
+  <p class="muted" style="margin:6px 0 0">Pick this board's <code>-main.bin</code> from the installer page (the same file the USB installer uses).</p>
   <button class="sec" id="pick">Choose file&hellip;</button><input type="file" id="file" accept=".bin,.gz" hidden>
 </div>
 <div class="card" id="prog" hidden><div id="msg"></div><div class="bar"><div id="fill"></div></div><div class="muted" id="sub"></div></div>
@@ -156,10 +158,13 @@ $('pick').onclick=()=>$('file').click();
 $('file').onchange=async()=>{const f=$('file').files[0];$('file').value='';if(!f||busy)return;lock(true);try{
   say('Reading '+f.name+'…','',.05);const b=await gunzip(await f.arrayBuffer());let app,www=null;
   if(b[0]===0xE9&&b.length<=info.appMax){app=b}
-  else{if(b.length<info.wwwOffset+4096)throw new Error("That file isn't a full installer image for this board.");
-    let end=info.wwwOffset;while(end>info.appOffset&&b[end-1]===0xFF)end--;end=Math.min(info.wwwOffset,Math.ceil(end/4096)*4096);
-    app=b.slice(info.appOffset,end);www=b.slice(info.wwwOffset,info.wwwOffset+info.wwwSize);
-    if(www.length!==info.wwwSize)throw new Error("That file's web app part is cut short.")}
+  else{
+    // the installer's -main.bin starts at 0xE000; a full image starts at 0
+    const base=[0,0xE000].find(o=>b.length>=info.wwwOffset-o+info.wwwSize&&b[info.appOffset-o]===0xE9);
+    if(base===undefined)throw new Error("That file isn't this board's installer image (the -main.bin from the installer page).");
+    const A=info.appOffset-base,W=info.wwwOffset-base;
+    let end=W;while(end>A&&b[end-1]===0xFF)end--;end=Math.min(W,A+Math.ceil((end-A)/4096)*4096);
+    app=b.slice(A,end);www=b.slice(W,W+info.wwwSize)}
   if(!confirm('Install '+f.name+' on this board?'))throw new Error('Cancelled.');
   await flash(app,www)}catch(e){say(e.message,'bad');lock(false)}};
 loadInfo().catch(()=>say("Couldn't read the board's details.",'bad'));

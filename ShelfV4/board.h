@@ -5,7 +5,16 @@
 #pragma once
 
 #define FW_VERSION "1.9.0"
-#ifdef SHELF_V3
+// SHELF_ESP32: a plain ESP32 dev board (NodeMCU-32S / ESP32-DevKitC, ESP32-D0WD, 4 MB flash):
+// no LoRa radio, no battery, and a screen only if you add one (SSD1306 on GPIO 21/22).
+#if defined(SHELF_ESP32)
+#define SHELF_NO_RADIO 1
+#define BOARD_NAME  "ESP32"
+#define BOARD_SHORT "ESP32"
+#define HOST_PREFIX "shelf-esp32-"
+#define COMS_LOG_KEEP 100
+#define COMS_RCPT_KEEP 300
+#elif defined(SHELF_V3)
 #define BOARD_NAME  "Heltec V3"
 #define BOARD_SHORT "V3"
 #define HOST_PREFIX "shelf-v3-"
@@ -19,6 +28,24 @@
 #define COMS_RCPT_KEEP 2000
 #endif
 
+#if defined(SHELF_ESP32)
+// --- ESP32 dev board: an optional SSD1306 128x64 screen on the usual I2C pins (no reset pin)
+#define OLED_SDA   21
+#define OLED_SCL   22
+#define OLED_RST   255    // U8X8_PIN_NONE
+#define OLED_ADDR  0x3C
+#define PIN_BUTTON 0      // BOOT button
+#define PIN_VEXT   255    // none of these exist here; the code that uses them never runs on this board
+#define PIN_VEXT_R8 255
+#define PIN_VBAT   255
+#define PIN_ADC_CTRL 255
+// microSD module on the ESP32's VSPI pins
+#define SD_CS    5
+#define SD_MOSI  23
+#define SD_SCK   18
+#define SD_MISO  19
+#define SD_PINS  "CS 5, MOSI 23, CLK 18, MISO 19"
+#else
 // --- Built in to the board ---
 #define OLED_SDA   17
 #define OLED_SCL   18
@@ -48,3 +75,4 @@
 #define SD_MISO  39
 #define SD_PINS  "CS 42, MOSI 41, CLK 40, MISO 39"
 #endif
+#endif   // SHELF_ESP32

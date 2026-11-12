@@ -1,6 +1,6 @@
-# The Shelf for Heltec V4 (and V3)
+# The Shelf for Heltec V4 (and V3, and plain ESP32 boards)
 
-**[The Shelf](https://github.com/hardwaremack-prog/the-shelf), running on a Heltec WiFi LoRa 32 V4, or a V3.** The board serves The Shelf's own web app (the same page you get on a PC or a Pi), with your files on a microSD card. Anyone on your home Wi-Fi opens it in a browser, and it shows up in Messages on every other Shelf in the house.
+**[The Shelf](https://github.com/hardwaremack-prog/the-shelf), running on a Heltec WiFi LoRa 32 V4, a V3, or a plain ESP32 dev board (NodeMCU-32S / DevKitC).** The board serves The Shelf's own web app (the same page you get on a PC or a Pi), with your files on a microSD card. Anyone on your home Wi-Fi opens it in a browser, and it shows up in Messages on every other Shelf in the house.
 
 ### ➡️ Install from your browser: **https://hardwaremack-prog.github.io/The-Shelf-Heltec-V4900mhzMesh/**
 
@@ -209,11 +209,29 @@ The board talks to other Shelves the same way they talk to each other: `shelf-pr
 
 ## Updates over Wi-Fi
 
-From v1.9 the board has two firmware slots. On its settings page, **Update firmware** (or `http://<board>/update`) checks the [installer site](https://hardwaremack-prog.github.io/The-Shelf-Heltec-V4900mhzMesh/) for a newer version and installs it over Wi-Fi: the new firmware goes into the spare slot and the web app is rewritten, then the board restarts into it. Files, settings, Wi-Fi and the admin password stay. Without internet (the board's own Wi-Fi), pick the board's installer `.bin` with **Update from a file**. The update page is built into the firmware, so it works even if a web-app update was cut off. Read-only mode blocks updates until write mode is unlocked.
+From v1.9 the board has two firmware slots. On its settings page, **Update firmware** (or `http://<board>/update`) checks the [installer site](https://hardwaremack-prog.github.io/The-Shelf-Heltec-V4900mhzMesh/) for a newer version and installs it over Wi-Fi: the new firmware goes into the spare slot and the web app is rewritten, then the board restarts into it. Files, settings, Wi-Fi and the admin password stay. Without internet (the board's own Wi-Fi), pick the board's `-main.bin` from the installer page with **Update from a file**. The update page is built into the firmware, so it works even if a web-app update was cut off. Read-only mode blocks updates until write mode is unlocked.
 
 > **Coming from v1.8 or earlier:** install v1.9 once over USB from the installer page. That one install changes the flash layout (adds the second slot), which clears files kept on the board's own flash; files on a microSD card are untouched.
 
 `build.sh` also writes `docs/ota/<board>.json` plus gzipped `-app.bin.gz` and `-www.bin.gz` pieces, which is what the update page downloads.
+
+## Plain ESP32 boards (NodeMCU-32S, ESP32-DevKitC)
+
+The same Shelf runs on an ESP32-WROOM dev board with 4 MB of flash. Install it with **Install on ESP32** on the installer page (hold **BOOT** while connecting if the port won't open). What's different:
+
+- **No 900MHz Coms**: these boards have no LoRa radio, so the Coms tab and remote admin are left out. Messages between Shelves over Wi-Fi work as usual.
+- **It needs a microSD card.** The 4 MB of flash is all firmware (two slots, for updates over Wi-Fi) and the web app.
+- **No screen or battery meter** unless you add an SSD1306 128×64 screen on GPIO 21 (SDA) / 22 (SCL), which it finds on its own. The BOOT button does what PRG does on a Heltec (hold 6 s: forget Wi-Fi; 12 s: clear the admin password).
+- Its name on the network is `shelf-esp32-xxxx.local`; the setup Wi-Fi is `The-Shelf-XXXX` as usual.
+
+| microSD module | ESP32 pin |
+|---|---|
+| 3v3 | 3V3 |
+| GND | GND |
+| CS | GPIO 5 |
+| MOSI | GPIO 23 |
+| CLK | GPIO 18 |
+| MISO | GPIO 19 |
 
 ## Backups
 
@@ -228,7 +246,7 @@ From v1.9 the board has two firmware slots. On its settings page, **Update firmw
 
 ## Building
 
-`build.sh` packs The Shelf's current `public/` folder (cloned from [the-shelf](https://github.com/hardwaremack-prog/the-shelf), or set `SHELF=/path/to/the-shelf`) into a LittleFS image, compiles the firmware for both V4 versions and the V3 (`-DSHELF_V3`, 8 MB layout in `partitions/v3_8mb.csv`), and writes full images to `docs/firmware/`.
+`build.sh` packs The Shelf's current `public/` folder (cloned from [the-shelf](https://github.com/hardwaremack-prog/the-shelf), or set `SHELF=/path/to/the-shelf`) into a LittleFS image, compiles the firmware for both V4 versions, the V3 (`-DSHELF_V3`, `partitions/v3_8mb.csv`) and plain ESP32 boards (`-DSHELF_ESP32`, `partitions/esp32_4mb.csv`), and writes each as two pieces to `docs/firmware/`: `<name>-boot.bin` (bootloader and partition table, at 0x0) and `<name>-main.bin` (everything from 0xE000). Installing skips 0x9000–0xE000, where the board keeps its Wi-Fi and admin password, so a reinstall keeps them.
 
 Needs:
 - arduino-cli with **esp32 core 2.0.17**

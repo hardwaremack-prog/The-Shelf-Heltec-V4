@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>The Shelf for Heltec V4 &amp; V3</title>
-<meta name="description" content="Install The Shelf on a Heltec WiFi LoRa 32 V4 or V3 from your browser.">
+<title>The Shelf for Heltec &amp; ESP32</title>
+<meta name="description" content="Install The Shelf on a Heltec WiFi LoRa 32 V4 or V3, or a plain ESP32 dev board, from your browser.">
 <script type="module" src="https://unpkg.com/esp-web-tools@10.1.1/dist/web/install-button.js?module"></script>
 <style>
 :root{--ink:#241B2F;--surface:#322542;--text:#F0E9E3;--muted:#B7ABBA;--accent:#F2B441;--accent-ink:#2A1D0E;--divider:#4A3B5C;--coral:#E2725B;
@@ -45,13 +45,13 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
 <body>
 <div class="wrap">
   <div class="mark">&#9724;&#9723;</div>
-  <h1>The Shelf, on a <span>Heltec V4</span> or V3</h1>
+  <h1>The Shelf, on a <span>Heltec V4</span>, V3 or ESP32</h1>
   <p class="lead">The full Shelf web app for your home, served from a little Heltec LoRa board and a microSD card. Photos, music, videos, games, books, Notes, Docs, Sheets, Slides, Draw, Tidy Suite and Messages. It even chats with the other Shelves in your house.</p>
   <img class="shot" src="screenshot-pictures.png" alt="The Shelf running on a Heltec V4, showing the Pictures shelf">
 
   <h2>1. Install it</h2>
-  <p>Plug the board into this computer with a USB-C <i>data</i> cable, pick your board, then choose its port when Chrome asks. This works in Chrome or Edge on a PC, Mac or Raspberry Pi. It's a 5 MB install, so give it a minute or two.</p>
-  <div class="warn"><b>Coming from v1.8 or earlier?</b> Install v1.9 once over USB here. It gives the board a second firmware slot, so from then on it updates itself over Wi-Fi: open its settings page and choose <b>Update firmware</b>. This one-time change clears files kept on the board's own flash (boards without a card); files on a microSD card, your Wi-Fi, admin password and settings all stay. If your files are on the board itself, back it up first (below).</div>
+  <p>Plug the board into this computer with a USB <i>data</i> cable, pick your board, then choose its port when Chrome asks. This works in Chrome or Edge on a PC, Mac or Raspberry Pi. It's a 5 MB install, so give it a minute or two.</p>
+  <div class="warn"><b>Coming from v1.8 or earlier?</b> Install v1.9 once over USB here, and leave "erase" unticked. It gives the board a second firmware slot, so from then on it updates itself over Wi-Fi: open its settings page and choose <b>Update firmware</b>. This one-time change clears files kept on the board's own flash (boards without a card); files on a microSD card, your Wi-Fi, admin password and settings all stay. If your files are on the board itself, back it up first (below).</div>
   <div class="warn">This replaces whatever is on the board, Meshtastic included. You can put Meshtastic back any time from <a href="https://flasher.meshtastic.org">flasher.meshtastic.org</a>.</div>
   <div class="grid">
     <div class="card">
@@ -84,6 +84,16 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
       </esp-web-install-button>
       <small>The earlier board. Same Shelf and same 900MHz Coms mesh as the V4, at up to ~22 dBm. A 4 MB install.</small>
     </div>
+    <div class="card">
+      <span class="tag">Plain ESP32</span>
+      <h3>ESP32 NodeMCU / DevKitC</h3>
+      <esp-web-install-button manifest="manifest-shelf-esp32.json">
+        <button slot="activate">Install on ESP32</button>
+        <span slot="unsupported" class="muted">Open this page in Chrome or Edge to install.</span>
+        <span slot="not-allowed" class="muted">This page has to be opened over https.</span>
+      </esp-web-install-button>
+      <small>An ESP32-WROOM dev board with 4 MB of flash (NodeMCU-32S, ESP32-DevKitC and the like). The whole Shelf, without 900MHz Coms (no radio). Needs a microSD card. If the port doesn't connect, hold BOOT while you click Connect.</small>
+    </div>
   </div>
   <p class="muted" style="margin-top:10px">Not sure which you have? Install the standard V4 one. The board's settings page shows how much PSRAM it found; if it lists none, reinstall with the R8 button.</p>
 
@@ -102,13 +112,23 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
   <p style="margin-top:14px"><b>Or plug it straight in.</b> 42 · 41 · 40 · 39 are in the same order as the module's CS · MOSI · CLK · MISO. Bend up its 3v3 and GND pins so they skip GPIO 45 and 38, then add two short jumpers to GND and 3V3 at the start of the row.</p>
   <img src="sd-inline-shelf.png" alt="Inline microSD mounting" style="width:100%;max-width:900px;border-radius:10px;margin:8px 0 14px">
   <p class="muted">On a V4, leave the GNSS kit unplugged: it shares GPIO 39–42. <b>V4-R8:</b> GPIO 40 powers its screen, so it keeps the older wiring: CS 4, MISO 6, CLK 47, MOSI 48 (<a href="sd-wiring-shelf-v4-r8.png">R8 diagram</a>). Coming from v1.5 or earlier on a V4 or V3? Move the four signal wires to the new pins. Use a FAT32 card; 32 GB cards come that way.</p>
+  <p style="margin-top:14px"><b>Plain ESP32 (NodeMCU / DevKitC):</b> the card goes on the ESP32's usual SPI pins. It must have a card: the 4 MB of flash is all taken by the firmware and the web app. A 128&times;64 SSD1306 screen on GPIO 21 (SDA) and 22 (SCL) is optional; with one, it shows the same status screen as the Heltec boards.</p>
+  <table>
+    <tr><th>Module pin</th><th>ESP32 pin</th></tr>
+    <tr><td>3v3</td><td><b>3V3</b></td></tr>
+    <tr><td>GND</td><td>GND</td></tr>
+    <tr><td>CS</td><td>GPIO 5</td></tr>
+    <tr><td>MOSI</td><td>GPIO 23</td></tr>
+    <tr><td>CLK (SCK)</td><td>GPIO 18</td></tr>
+    <tr><td>MISO</td><td>GPIO 19</td></tr>
+  </table>
 
   <h2>3. Connect it to your Wi-Fi</h2>
   <ol>
-    <li>Power the board. The screen shows <b>Join The-Shelf-XXXX</b>.</li>
+    <li>Power the board. The screen shows <b>Join The-Shelf-XXXX</b> (a plain ESP32 without a screen: look for that Wi-Fi on your phone).</li>
     <li>Join that Wi-Fi on your phone. The password is <code>theshelf</code>. The setup page opens; if it doesn't, go to <code>http://192.168.4.1</code>.</li>
     <li>Tap <b>Find networks</b>, pick your home Wi-Fi and type its password. The board restarts.</li>
-    <li>Back on your home Wi-Fi, open the address on the board's screen, or <code>http://shelf-v4-xxxx.local</code> (<code>shelf-v3-xxxx.local</code> on a V3).</li>
+    <li>Back on your home Wi-Fi, open the address on the board's screen, or <code>http://shelf-v4-xxxx.local</code> (<code>shelf-v3-xxxx.local</code> on a V3, <code>shelf-esp32-xxxx.local</code> on a plain ESP32).</li>
   </ol>
 
   <h2>Take it anywhere</h2>
@@ -128,7 +148,7 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
 
 
   <h2>Updates over Wi-Fi</h2>
-  <p>From v1.9, open the board's settings page and choose <b>Update firmware</b> (or go to <code>/update</code> on the board). <b>Check for update</b> downloads the newest version from this site and installs it; your files and settings stay. On the board's own Wi-Fi, where there's no internet, download your board's file first (<a href="firmware/shelf-v4.bin" download>V4</a> · <a href="firmware/shelf-v4-r8.bin" download>V4-R8</a> · <a href="firmware/shelf-v3.bin" download>V3</a>) and use <b>Update from a file</b>. The board's screen shows the progress. The update page is built into the firmware, so it still works if an update is ever cut off.</p>
+  <p>From v1.9, open the board's settings page and choose <b>Update firmware</b> (or go to <code>/update</code> on the board). <b>Check for update</b> downloads the newest version from this site and installs it; your files and settings stay. On the board's own Wi-Fi, where there's no internet, download your board's file first (<a href="firmware/shelf-v4-main.bin" download>V4</a> · <a href="firmware/shelf-v4-r8-main.bin" download>V4-R8</a> · <a href="firmware/shelf-v3-main.bin" download>V3</a> · <a href="firmware/shelf-esp32-main.bin" download>ESP32</a>) and use <b>Update from a file</b>. The board's screen shows the progress. The update page is built into the firmware, so it still works if an update is ever cut off.</p>
 
   <h2 id="backup">Back up or restore the whole board</h2>
   <p>Save everything on the board's own flash to one compressed file: the firmware, your Wi-Fi, admin password, Coms history, and any files kept on the board when no card is fitted. Restore puts it all back exactly as it was, on this board or a replacement of the same kind. Plug in over USB-C like an install. The microSD card is backed up separately, over Wi-Fi, from the board's settings page.</p>

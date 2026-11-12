@@ -43,9 +43,14 @@ static const char* AP_PASS = "theshelf";
 static AsyncWebServer server80(80), server8080(8080);
 static DNSServer dns;
 static Preferences prefs;
+#if CONFIG_IDF_TARGET_ESP32
+static SPIClass sdSPI(VSPI);       // plain ESP32: FSPI is the flash chip's own bus
+#else
 static SPIClass sdSPI(FSPI);
+#endif
 static U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, OLED_RST, OLED_SCL, OLED_SDA);
 static bool oledOK = false, screenOn = true;
+static void oledPower(int save) { if (oledOK) oled.setPowerSave(save); }
 static uint32_t lastActivity = 0;
 static int onlineShelves = 0;
 
@@ -53,8 +58,7 @@ String currentIP() { return staOK ? WiFi.localIP().toString() : WiFi.softAPIP().
 
 // ------------------------------------------------------------ OLED
 static bool probeOLED() {
-  pinMode(OLED_RST, OUTPUT);
-  digitalWrite(OLED_RST, LOW); delay(20); digitalWrite(OLED_RST, HIGH); delay(20);
+  if (OLED_RST != 255) { pinMode(OLED_RST, OUTPUT); digitalWrite(OLED_RST, LOW); delay(20); digitalWrite(OLED_RST, HIGH); delay(20); }
   Wire.begin(OLED_SDA, OLED_SCL);
   Wire.beginTransmission(OLED_ADDR);
   bool ok = Wire.endTransmission() == 0;
@@ -68,6 +72,13 @@ static bool probeOLED() {
 static bool tryVext(int pin, int level) { pinMode(pin, OUTPUT); digitalWrite(pin, level); delay(60); return probeOLED(); }
 
 static void powerOLED() {
+#if defined(SHELF_ESP32)
+  oledOK = probeOLED();             // a screen is optional here: no screen, no drawing
+  if (!oledOK) return;
+  oled.begin();
+  oled.setContrast(200);
+  return;
+#endif
 #if defined(SHELF_V3)
   bool ok = tryVext(PIN_VEXT, LOW) || tryVext(PIN_VEXT, HIGH);   // V3: GPIO36, LOW = on
 #elif CONFIG_SPIRAM_MODE_OCT
@@ -87,6 +98,9 @@ static void powerOLED() {
 // is held high. The R8 build doesn't touch GPIO37 (its PSRAM) and just reads GPIO1.
 static float battV = -1;
 static void readBattery() {
+#if defined(SHELF_ESP32)
+  return;                           // no battery divider on a dev board
+#endif
   uint32_t mv = 0;
 #if defined(SHELF_V3)
   // V3.0/3.1 connect the divider with ADC_CTRL LOW, V3.2 with HIGH. Unconnected, GPIO1
@@ -488,7 +502,7 @@ static void handleButton() {
   if (down && !btnDown) { btnDown = true; btnDownAt = now; }
   uint32_t held = now - btnDownAt;
   if (down && held > 1500) {
-    if (!screenOn) { screenOn = true; oled.setPowerSave(0); }
+    if (!screenOn) { screenOn = true; oledPower(0); }
     char b[32];
     if (held < 6000) {
       snprintf(b, sizeof b, "Keep holding %d s", 6 - (int)(held / 1000));
@@ -507,13 +521,13 @@ static void handleButton() {
       oledMsg("Wi-Fi reset", "Forgetting network...", "Restarting in setup", "mode");
       prefs.remove("ssid"); prefs.remove("pass"); prefs.remove("mode"); delay(1200); ESP.restart();
     }
-    if (held < 800 && !screenOn) { screenOn = true; oled.setPowerSave(0); }
+    if (held < 800 && !screenOn) { screenOn = true; oledPower(0); }
   }
 }
 
 // ------------------------------------------------------------ remote admin (900MHz Coms)
-void screenWake() { lastActivity = millis(); if (!screenOn) { screenOn = true; oled.setPowerSave(0); } }
-void screenSleep() { if (screenOn) { screenOn = false; oled.setPowerSave(1); } }
+void screenWake() { lastActivity = millis(); if (!screenOn) { screenOn = true; oledPower(0); } }
+void screenSleep() { if (screenOn) { screenOn = false; oledPower(1); } }
 bool screenIsOn() { return screenOn; }
 int batteryPercentNow() { return batteryPercent(); }
 static uint32_t rebootLaterAt = 0;
@@ -623,7 +637,7 @@ void loop() {
   if (statsDirty || now - lastStats > 60000) { refreshStats(); lastStats = now; }
   musicMetaLoop();
 
-  if (screenOn && now - lastActivity > 300000 && !btnDown) { screenOn = false; oled.setPowerSave(1); }
+  if (screenOn && now - lastActivity > 300000 && !btnDown) { screenOn = false; oledPower(1); }
   static uint32_t lastDraw = 0;
   static uint32_t lastBatt = 0;
   if (lastBatt == 0 || now - lastBatt > 10000) { readBattery(); lastBatt = now; }
