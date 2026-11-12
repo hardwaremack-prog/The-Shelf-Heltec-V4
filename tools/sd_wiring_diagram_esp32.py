@@ -70,5 +70,72 @@ def svg():
     o.append('</svg>')
     return '\n'.join(o)
 
+
+def svg_flipped():
+    """The same board turned over (header pins pointing up, USB still on the right): the 3V3 · EN
+    row is now along the top and the GND · 23 · 22 row along the bottom, so the card sits below."""
+    W, H = 1200, 1060
+    bx, by, bw, bh = 170, 180, 860, 300
+    px0 = bx + 70; pstep = (bw - 140) / 18
+    pinx = lambda i: px0 + i * pstep
+    topy = by + 28; boty = by + bh - 28
+    sx, sy, sw, sh = 360, 620, 480, 200          # module, pins along its top edge
+    sd = [('3v3', '3V3', '#ff5a5a', 'top', 0), ('CS', '5', '#c77dff', 'bot', 9), ('MOSI', '23', '#4cd964', 'bot', 1),
+          ('CLK', '18', '#3aa0ff', 'bot', 8), ('MISO', '19', '#ffa53a', 'bot', 7), ('GND', 'GND', '#9aa4ae', 'bot', 0)]
+    sdx = lambda k: sx + 70 + k * 68
+    o = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif">',
+         f'<rect width="{W}" height="{H}" fill="#0b0f14"/>',
+         '<text x="40" y="44" fill="#fff" font-size="28" font-weight="700">microSD card → ESP32 NodeMCU, board flipped over</text>',
+         '<text x="40" y="74" fill="#7f93a8" font-size="16">Seen from underneath, header pins pointing up, USB on the right. Five wires to the bottom row, 3V3 from the top row.</text>']
+    # board, underside: bare PCB, the module's outline dashed (it's on the other side)
+    o.append(f'<rect x="{bx}" y="{by}" width="{bw}" height="{bh}" rx="12" fill="#141a22" stroke="#3a4a5c" stroke-width="3"/>')
+    o.append(f'<rect x="{bx+bw-12}" y="{by+bh/2-32}" width="46" height="64" rx="8" fill="#9aa4ae" stroke="#5f6b78" stroke-width="3"/>')
+    o.append(f'<text x="{bx+bw+11}" y="{by+bh/2+56}" fill="#7f93a8" font-size="14" text-anchor="middle">USB</text>')
+    o.append(f'<rect x="{bx+90}" y="{by+70}" width="330" height="160" rx="6" fill="none" stroke="#4b5b6d" stroke-width="2" stroke-dasharray="8 6"/>')
+    o.append(f'<text x="{bx+255}" y="{by+148}" fill="#6b7d90" font-size="18" font-weight="700" text-anchor="middle">underside</text>')
+    o.append(f'<text x="{bx+255}" y="{by+174}" fill="#4f6072" font-size="13" text-anchor="middle">(ESP32 module is on the other side; antenna end)</text>')
+    o.append(f'<text x="{bx+640}" y="{by+156}" fill="#4f6072" font-size="14" text-anchor="middle">pin names are often printed on this side too</text>')
+    used = {(c[3], c[4]): c for c in sd}
+    for row, names, y, ty in (('top', BOT, topy, topy + 32), ('bot', TOP, boty, boty - 20)):
+        for i, name in enumerate(names):
+            x = pinx(i); hit = (row, i) in used
+            col = used[(row, i)][2] if hit else '#3a4a5c'
+            o.append(f'<circle cx="{x}" cy="{y}" r="{11 if hit else 8}" fill="{col if hit else "#0b0f14"}" stroke="{col if hit else "#6b7d90"}" stroke-width="3"/>')
+            o.append(f'<text x="{x}" y="{ty}" fill="{"#fff" if hit else "#6b7d90"}" font-size="{14 if hit else 12}" font-weight="{700 if hit else 400}" text-anchor="middle">{name}</text>')
+    # module below the board
+    o.append(f'<rect x="{sx}" y="{sy}" width="{sw}" height="{sh}" rx="14" fill="#1d4f8f" stroke="#3a78c2" stroke-width="3"/>')
+    o.append(f'<rect x="{sx+120}" y="{sy+40}" width="240" height="110" rx="8" fill="#c9ced6" stroke="#8e96a2" stroke-width="3"/>')
+    o.append(f'<rect x="{sx+150}" y="{sy+60}" width="180" height="70" rx="4" fill="#2a2f36"/>')
+    o.append(f'<text x="{sx+240}" y="{sy+102}" fill="#e6edf5" font-size="18" font-weight="700" text-anchor="middle">microSD</text>')
+    o.append(f'<text x="{sx+16}" y="{sy+sh-14}" fill="#a9c7ee" font-size="14">3.3 V SPI module (pin order as printed on it)</text>')
+    for k, (lab, _, col, _, _) in enumerate(sd):
+        x = sdx(k); y = sy - 24
+        o.append(f'<rect x="{x-9}" y="{y}" width="18" height="30" rx="{0 if k==0 else 3}" fill="#d4af37" stroke="{"#fff" if k==0 else "#8a6d1d"}" stroke-width="{2 if k==0 else 1}"/>')
+        o.append(f'<text x="{x}" y="{sy+24}" fill="#fff" font-size="15" font-weight="700" text-anchor="middle">{lab}</text>')
+    for k, (lab, pin, col, row, idx) in enumerate(sd):
+        x1 = sdx(k); y1 = sy - 24
+        x2 = pinx(idx)
+        if row == 'bot':
+            y2 = boty + 12
+            o.append(f'<path d="M{x1},{y1} C{x1},{y1-70} {x2},{y2+80} {x2},{y2}" fill="none" stroke="{col}" stroke-width="6" stroke-linecap="round"/>')
+        else:   # 3V3 is on the far row: round the antenna end and come down from above
+            y2 = topy - 12; lx = bx - 50
+            o.append(f'<path d="M{x1},{y1} C{x1},{y1-60} {lx},{by+bh+60} {lx},{by+bh-40} L{lx},{by-10} C{lx},{by-60} {x2},{by-60} {x2},{y2}" fill="none" stroke="{col}" stroke-width="6" stroke-linecap="round"/>')
+    lx, ly = 40, 900
+    x = lx
+    for a, b, c, _, _ in sd:
+        t = f'{a} → {("GPIO "+b) if b.isdigit() else b}'
+        o.append(f'<rect x="{x}" y="{ly-14}" width="22" height="8" rx="4" fill="{c}"/>')
+        o.append(f'<text x="{x+30}" y="{ly-6}" fill="#d7e3ee" font-size="16" font-weight="600">{t}</text>')
+        x += 30 + len(t) * 8.8 + 26
+    lines = ['Flipped over, the rows swap places: 3V3 · EN · VP … 5V is now on top, GND · 23 · 22 … CLK along the bottom, still read from the antenna end.',
+             'Module pins in silkscreen order: 3v3 · CS · MOSI · CLK · MISO · GND (square pad = 3v3). CLK is the SPI clock (SCK).',
+             'Match by the names printed by the pins, not by position: ESP32 boards differ. 3V3 only, never 5V/VIN: the module has no regulator.']
+    for n, l in enumerate(lines):
+        o.append(f'<text x="40" y="{ly+28+n*20}" fill="#7f93a8" font-size="14">{l}</text>')
+    o.append('</svg>')
+    return '\n'.join(o)
+
 out = sys.argv[1] if len(sys.argv) > 1 else '.'
 open(f'{out}/sd-wiring-shelf-esp32.svg', 'w').write(svg())
+open(f'{out}/sd-wiring-shelf-esp32-flipped.svg', 'w').write(svg_flipped())
