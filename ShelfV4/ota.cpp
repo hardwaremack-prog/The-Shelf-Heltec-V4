@@ -192,8 +192,10 @@ function send(part,data,lo,hi,label){return new Promise((ok,no)=>{const x=new XM
 async function flash(app,www,ver){
   if(app[0]!==0xE9)throw new Error("That isn't firmware for this board.");
   if(app.length>info.appMax)throw new Error('That firmware is too big for this board. Is it for a '+info.board+'?');
-  await send('app',app,.35,.75,'firmware');
-  if(www)await send('www',www,.75,.98,'web app');
+  // the web app first: it goes straight to flash, so it's back even if the firmware step can't run
+  // (a plain ESP32 needs its microSD card for the firmware step)
+  if(www)await send('www',www,.35,.6,'web app');
+  await send('app',app,.6,.98,'firmware');
   say('Restarting the board…','',.99);await fetch('/api/board/update/restart',{method:'POST'}).catch(()=>{});
   const t0=Date.now();await new Promise(r=>setTimeout(r,6000));
   while(Date.now()-t0<120000){try{const i=await fetch('/api/board/update/info',{cache:'no-store'}).then(r=>r.json());

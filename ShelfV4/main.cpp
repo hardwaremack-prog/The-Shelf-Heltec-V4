@@ -393,7 +393,18 @@ bool handleBoardApi(AsyncWebServerRequest* r, const String& url, WebRequestMetho
 // ------------------------------------------------------------ web
 static void sendWww(AsyncWebServerRequest* r, const char* path, const char* type) {
   String gz = String(path) + ".gz";
-  if (!LittleFS.exists(gz)) { r->send(500, "text/plain", "The web app is missing from the board. Re-flash the full firmware from the installer page."); return; }
+  if (!LittleFS.exists(gz)) {
+    // The web app's flash area is empty or unreadable (usually an install that stopped early).
+    // The firmware still runs, and its built-in /update page can put the web app back.
+    r->send(500, "text/html; charset=utf-8",
+      "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>"
+      "<body style='font:16px/1.5 system-ui,sans-serif;background:#241B2F;color:#F0E9E3;max-width:560px;margin:40px auto;padding:0 16px'>"
+      "<h2 style='font-family:Georgia,serif'>The Shelf's web app isn't on this board</h2>"
+      "<p>The firmware is running, but the part of the flash that holds the web app is empty. That usually means an install stopped before it finished.</p>"
+      "<p><a style='color:#F2B441;font-weight:700' href='/update'>Open the update page</a> and use <b>Check for update</b> (needs internet) or "
+      "<b>Update from a file</b> with this board's <code>-main.bin</code> from the installer page. Or reinstall over USB from the installer page.</p>");
+    return;
+  }
   AsyncWebServerResponse* res = r->beginResponse(LittleFS, gz, type);
   res->addHeader("Content-Encoding", "gzip");
   res->addHeader("Cache-Control", "no-cache");
