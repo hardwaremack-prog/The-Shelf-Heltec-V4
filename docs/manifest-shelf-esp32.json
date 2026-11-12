@@ -1,6 +1,6 @@
 {
   "name": "The Shelf for ESP32 (NodeMCU-32S / DevKitC)",
-  "version": "1.9.2",
+  "version": "1.9.3",
   "new_install_prompt_erase": true,
   "builds": [
     {

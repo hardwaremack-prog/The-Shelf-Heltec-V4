@@ -1,10 +1,12 @@
 # The Shelf for a plain ESP32 dev board (NodeMCU-32S / DevKitC, 4 MB flash), with Bluetooth.
 # app0 is The Shelf; app1 is a small loader (ShelfLoader/) that installs an update The Shelf
-# downloaded to the microSD card (there's no room for a second full copy). The web app fills
-# the rest, so files live on the card: it needs one.
+# downloaded to the microSD card (there's no room for a second full copy). Then the web app.
+# The top 64 KB of the flash is left empty on purpose: on some boards the last sector of the
+# chip doesn't hold what the installer writes, which corrupted the web app when it ended there.
+# Files live on the card: it needs one.
 # Name,   Type, SubType, Offset,   Size
 nvs,      data, nvs,     0x9000,   0x5000
 otadata,  data, ota,     0xe000,   0x2000
-app0,     app,  ota_0,   0x10000,  0x260000
-app1,     app,  ota_1,   0x270000, 0x60000
-www,      data, spiffs,  0x2D0000, 0x130000
+app0,     app,  ota_0,   0x10000,  0x250000
+app1,     app,  ota_1,   0x260000, 0x60000
+www,      data, spiffs,  0x2C0000, 0x130000
