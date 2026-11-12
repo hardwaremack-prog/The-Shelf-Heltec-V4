@@ -11,7 +11,11 @@
 #include <HTTPClient.h>
 
 static volatile bool running = false;
-static String from, status = "", errorMsg = "";
+static String from;                                    // set only while nothing is running
+// read by the web task while the copying task writes them: plain buffers, never reallocated
+static char status[64] = "", errorMsg[128] = "";
+static void setStatus(const String& t) { snprintf(status, sizeof status, "%s", t.c_str()); }
+static void setError(const String& t) { snprintf(errorMsg, sizeof errorMsg, "%s", t.c_str()); }
 static volatile int copied = 0, skipped = 0, failed = 0;
 
 static const char* const CATS[] = {"Games", "Programs", "Books", "Videos", "Music", nullptr};
@@ -37,7 +41,7 @@ static bool download(const String& url, const String& dest) {
 }
 
 static void importShelf(const char* cat) {
-  status = String("Looking at ") + cat + "…";
+  setStatus(String("Looking at ") + cat + "…");
   bool music = !strcmp(cat, "Music"), video = !strcmp(cat, "Videos");
   const char* kind = music ? "album-art" : video ? "video-thumbs" : "file-thumbs";
   const char* key = music ? "artUrl" : "thumbUrl";
@@ -50,9 +54,9 @@ static void importShelf(const char* cat) {
   {
     HTTPClient http;
     http.setTimeout(10000);
-    if (!http.begin(from + "/api/files?category=" + cat)) { errorMsg = "Couldn't reach " + from; return; }
+    if (!http.begin(from + "/api/files?category=" + cat)) { setError("Couldn't reach " + from); return; }
     int code = http.GET();
-    if (code != 200) { http.end(); errorMsg = String("The Shelf at ") + from + " didn't answer (" + code + ")."; return; }
+    if (code != 200) { http.end(); setError(String("The Shelf at ") + from + " didn't answer (" + code + ")."); return; }
     Stream& s = http.getStream();
     JsonDocument filter; filter["name"] = true; filter[key] = true;
     if (!s.find('[')) { http.end(); return; }
@@ -73,7 +77,7 @@ static void importShelf(const char* cat) {
   }
   int i = 0;
   for (auto& t : todo) {
-    status = String(cat) + ": " + (++i) + " of " + todo.size();
+    setStatus(String(cat) + ": " + (++i) + " of " + todo.size());
     String dest = String(dir) + "/" + fnvHex(String(cat) + "/" + t.first) + ".jpg";
     if (download(from + t.second, dest)) copied++; else failed++;
     delay(5);
@@ -81,8 +85,8 @@ static void importShelf(const char* cat) {
 }
 
 static void importTask(void*) {
-  for (int i = 0; CATS[i] && !errorMsg.length(); i++) importShelf(CATS[i]);
-  status = errorMsg.length() ? "" : "Done";
+  for (int i = 0; CATS[i] && !errorMsg[0]; i++) importShelf(CATS[i]);
+  setStatus(errorMsg[0] ? "" : "Done");
   running = false;
   vTaskDelete(nullptr);
 }
@@ -104,7 +108,7 @@ bool handleThumbImportApi(AsyncWebServerRequest* r, const String& url, WebReques
   if (!f.startsWith("http://") && !f.startsWith("https://")) f = "http://" + f;
   while (f.endsWith("/")) f.remove(f.length() - 1);
   if (f.length() < 10) { sendErr(r, 400, "Type the address of The Shelf on your computer, like 10.0.0.80:8080."); return true; }
-  from = f; copied = skipped = failed = 0; errorMsg = ""; status = "Starting…"; running = true;
+  from = f; copied = skipped = failed = 0; errorMsg[0] = 0; setStatus("Starting…"); running = true;
   if (xTaskCreatePinnedToCore(importTask, "thumbimp", 8192, nullptr, 1, nullptr, 1) != pdPASS) {
     running = false; sendErr(r, 500, "Not enough memory to start."); return true;
   }
