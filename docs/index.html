@@ -92,7 +92,7 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
         <span slot="unsupported" class="muted">Open this page in Chrome or Edge to install.</span>
         <span slot="not-allowed" class="muted">This page has to be opened over https.</span>
       </esp-web-install-button>
-      <small>An ESP32-WROOM dev board with 4 MB of flash (NodeMCU-32S, ESP32-DevKitC and the like). The whole Shelf plus Bluetooth headsets, without 900MHz Coms (no radio). Starts its own Wi-Fi <b>TheShelf32c</b> (password <code>theshelf</code>) at <b>http://10.1.1.250</b>. Needs a microSD card. If the port doesn't connect, hold BOOT while you click Connect.</small>
+      <small>An ESP32-WROOM dev board with 4 MB of flash (NodeMCU-32S, ESP32-DevKitC and the like). The whole Shelf, without 900MHz Coms (no radio). Starts its own Wi-Fi <b>TheShelf32c</b> (password <code>theshelf</code>) at <b>http://10.1.1.250</b>. Needs a microSD card. If the port doesn't connect, hold BOOT while you click Connect.</small>
     </div>
   </div>
   <p class="muted" style="margin-top:10px">Not sure which you have? Install the standard V4 one. The board's settings page shows how much PSRAM it found; if it lists none, reinstall with the R8 button.</p>
@@ -148,9 +148,6 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
   <p>The address to open is always on the bottom line, and the battery meter is in the top corner. The screen sleeps after 5 minutes; press PRG to wake it. New Coms messages show for 15 seconds.</p>
   <img class="shot" src="screenshots/oled-all.png" alt="The board's screen on your Wi-Fi, on its own Wi-Fi, and at setup" style="image-rendering:pixelated">
 
-
-  <h2>Bluetooth headsets (plain ESP32)</h2>
-  <p>A plain ESP32 has Classic Bluetooth, so on that board a <b>Bluetooth</b> tab takes the place of 900MHz Coms. Turn it on (the board restarts), put your headset or speaker in pairing mode, and tap it when it shows up. The board then plays your Music shelf straight to it: play all, shuffle, or pick a song, with pause, next, previous and volume. It remembers the headset and reconnects whenever it's on. MP3 and WAV songs play on the headset; other formats play in the browser as usual.</p>
 
   <h2>Updates over Wi-Fi</h2>
   <p>From v1.9, open the board's settings page and choose <b>Update firmware</b> (or go to <code>/update</code> on the board). <b>Check for update</b> downloads the newest version from this site and installs it; your files and settings stay. On the board's own Wi-Fi, where there's no internet, download your board's file first (<a href="firmware/shelf-v4-main.bin" download>V4</a> · <a href="firmware/shelf-v4-r8-main.bin" download>V4-R8</a> · <a href="firmware/shelf-v3-main.bin" download>V3</a> · <a href="firmware/shelf-esp32-main.bin" download>ESP32</a>) and use <b>Update from a file</b>. The board's screen shows the progress. The update page is built into the firmware, so it still works if an update is ever cut off.</p>

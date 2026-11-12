@@ -43,11 +43,6 @@ app = re.sub(r",(\s*\];\s*\nconst TOOL_LABELS)", r"\1", app)   # no trailing com
 has_radio = board != "ESP32"
 app, n1 = re.subn(r"(\n(\s*)\{ key: 'tidysuite',)", r"\n\2{ key: 'coms', label: '900MHz Coms', color: '#E2725B' },\1", app, count=1 if has_radio else 0) if has_radio else (app, 1)
 app, n2 = re.subn(r"(else if \(key === 'tidysuite'\) loadTidySuiteView\(\);)", r"\1\n  else if (key === 'coms') window.loadComsView();", app, count=1) if has_radio else (app, 1)
-if board == "ESP32":   # instead: Bluetooth headsets (board.js draws it)
-    app, n3 = re.subn(r"(\n(\s*)\{ key: 'tidysuite',)", r"\n\2{ key: 'bluetooth', label: 'Bluetooth', color: '#5B8DEF' },\1", app, count=1)
-    app, n4 = re.subn(r"(else if \(key === 'tidysuite'\) loadTidySuiteView\(\);)", r"\1\n  else if (key === 'bluetooth') window.loadBtView();", app, count=1)
-    if not (n3 and n4):
-        sys.exit("Couldn't add the Bluetooth tab to app.js -- The Shelf's layout changed; update pack_www.py")
 if not (n1 and n2):
     sys.exit("Couldn't add the 900MHz Coms tab to app.js -- The Shelf's layout changed; update pack_www.py")
 # a seventh shelf, MIDI: listed, uploaded and played like Music (board-ui/midi.js plays the files)

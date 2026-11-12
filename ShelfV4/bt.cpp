@@ -17,7 +17,7 @@
 // by having the feature.
 #include "shelf.h"
 
-#if defined(SHELF_ESP32)
+#if defined(SHELF_BT)   // Bluetooth headsets: switched off (Wi-Fi and Bluetooth fought over the radio and memory)
 #include <BluetoothA2DPSource.h>
 #include <AudioFileSourceSD.h>
 #include <AudioFileSourceID3.h>
@@ -341,7 +341,12 @@ bool handleBtApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m
 }
 
 #else
+#if defined(SHELF_ESP32)
+#include <esp_bt.h>
+void btBegin() { esp_bt_controller_mem_release(ESP_BT_MODE_BTDM); }   // Bluetooth isn't used: its memory goes to the web server
+#else
 void btBegin() {}
+#endif
 void btTick() {}
 bool btActive() { return false; }
 bool handleBtApi(AsyncWebServerRequest*, const String&, WebRequestMethod) { return false; }

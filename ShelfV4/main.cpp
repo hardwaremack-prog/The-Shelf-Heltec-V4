@@ -301,9 +301,7 @@ static void stopAP() {
 static void onJoined() {
   staOK = true;
   Serial.printf("[shelf] joined \"%s\" as %s\n", wifiSSID.c_str(), WiFi.localIP().toString().c_str());
-#if !defined(SHELF_ESP32)
-  WiFi.setSleep(false);       // (a plain ESP32 with Bluetooth on must keep Wi-Fi power saving, or it aborts)
-#endif
+  WiFi.setSleep(false);
   startMDNS();
   if (!ntpStarted) { configTime(0, 0, "pool.ntp.org", "time.google.com"); ntpStarted = true; }
 }
@@ -546,7 +544,6 @@ static void handleButton() {
       prefs.remove("ssid"); prefs.remove("pass"); prefs.remove("mode");
 #if defined(SHELF_ESP32)
       prefs.remove("apssid"); prefs.remove("appass");   // no screen: back to TheShelf32c / theshelf, so you can always get in
-      { Preferences b; b.begin("bt", false); b.putBool("on", false); b.end(); }   // and Bluetooth off
 #endif
       delay(1200); ESP.restart();
     }
@@ -643,9 +640,7 @@ void setup() {
 
   setupServer(server80);
   setupServer(server8080);
-  // Bluetooth comes up last (plain ESP32 only, bt.cpp): Wi-Fi and the web page get their memory
-  // first, so the board can always be reached to switch Bluetooth off again.
-  btBegin();
+  btBegin();                  // plain ESP32: hands Bluetooth's unused memory to the web server
   messagingBegin();
   comsBegin();
   markMusicDirty();
