@@ -43,6 +43,11 @@ app = re.sub(r",(\s*\];\s*\nconst TOOL_LABELS)", r"\1", app)   # no trailing com
 has_radio = board != "ESP32"
 app, n1 = re.subn(r"(\n(\s*)\{ key: 'tidysuite',)", r"\n\2{ key: 'coms', label: '900MHz Coms', color: '#E2725B' },\1", app, count=1 if has_radio else 0) if has_radio else (app, 1)
 app, n2 = re.subn(r"(else if \(key === 'tidysuite'\) loadTidySuiteView\(\);)", r"\1\n  else if (key === 'coms') window.loadComsView();", app, count=1) if has_radio else (app, 1)
+if board == "ESP32":   # instead: Bluetooth headsets (board.js draws it)
+    app, n3 = re.subn(r"(\n(\s*)\{ key: 'tidysuite',)", r"\n\2{ key: 'bluetooth', label: 'Bluetooth', color: '#5B8DEF' },\1", app, count=1)
+    app, n4 = re.subn(r"(else if \(key === 'tidysuite'\) loadTidySuiteView\(\);)", r"\1\n  else if (key === 'bluetooth') window.loadBtView();", app, count=1)
+    if not (n3 and n4):
+        sys.exit("Couldn't add the Bluetooth tab to app.js -- The Shelf's layout changed; update pack_www.py")
 if not (n1 and n2):
     sys.exit("Couldn't add the 900MHz Coms tab to app.js -- The Shelf's layout changed; update pack_www.py")
 # a seventh shelf, MIDI: listed, uploaded and played like Music (board-ui/midi.js plays the files)
@@ -94,7 +99,10 @@ if board != "V4":
         if board == "ESP32":   # its button is labelled BOOT, and there's no screen unless one is added
             t = t.replace("The screen sleeps after 5 minutes. Press the board's PRG button to wake it.",
                           "With a screen added (SSD1306 on GPIO 21/22), it sleeps after 5 minutes; press BOOT to wake it.")
+            t = t.replace("Hold PRG for 6 seconds and let go to forget the Wi-Fi and go back to setup mode.",
+                          "Hold BOOT for 6 seconds and let go to forget the home Wi-Fi and go back to its own Wi-Fi, TheShelf32c (password theshelf) at http://10.1.1.250.")
             t = t.replace("Hold PRG", "Hold BOOT")
+            t = t.replace("http://192.168.4.1", "http://10.1.1.250")   # its own Wi-Fi has a fixed address
         f.write_text(t, encoding="utf-8")
 
 try:

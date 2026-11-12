@@ -219,8 +219,9 @@ From v1.9 the board has two firmware slots. On its settings page, **Update firmw
 
 The same Shelf runs on an ESP32-WROOM dev board with 4 MB of flash. Install it with **Install on ESP32** on the installer page (hold **BOOT** while connecting if the port won't open). What's different:
 
-- **No 900MHz Coms**: these boards have no LoRa radio, so the Coms tab and remote admin are left out. Messages between Shelves over Wi-Fi work as usual.
-- **It needs a microSD card.** The 4 MB of flash is all firmware (two slots, for updates over Wi-Fi) and the web app.
+- **Its own Wi-Fi, no setup.** It has no screen, so it starts straight on its own network: **TheShelf32c**, password `theshelf`, at **http://10.1.1.250** (phones get 10.1.1.100 and up). Joining a home Wi-Fi is optional, from its settings page. Holding BOOT 6 s puts it back on TheShelf32c with the default password.
+- **Bluetooth headsets** instead of 900MHz Coms (no LoRa radio). The **Bluetooth** tab turns Bluetooth on, finds headsets and speakers in pairing mode, connects and remembers one, and plays the Music shelf on it from the board itself (MP3 and WAV): play all, shuffle, pick a song, pause, next, previous, volume. With Bluetooth off, its memory goes back to the web server.
+- **It needs a microSD card.** The 4 MB of flash holds The Shelf (2.4 MB slot), a small update loader (`ShelfLoader/`, 384 KB) and the web app. An update over Wi-Fi saves the new firmware on the card; the board restarts into the loader, which installs it and starts The Shelf again.
 - **No screen or battery meter** unless you add an SSD1306 128×64 screen on GPIO 21 (SDA) / 22 (SCL), which it finds on its own. The BOOT button does what PRG does on a Heltec (hold 6 s: forget Wi-Fi; 12 s: clear the admin password).
 - Its name on the network is `shelf-esp32-xxxx.local`; the setup Wi-Fi is `The-Shelf-XXXX` as usual.
 
@@ -251,6 +252,7 @@ The same Shelf runs on an ESP32-WROOM dev board with 4 MB of flash. Install it w
 Needs:
 - arduino-cli with **esp32 core 2.0.17**
 - **ESPAsyncWebServer 3.3.23** + **AsyncTCP 3.2.14** (mathieucarbou), **ArduinoJson 7**, **U8g2**
+- for the plain ESP32 build: **ESP32-A2DP 1.8** (pschatzmann) and **ESP8266Audio 1.9**
 - **mklittlefs 3.x** built with `LFS_NAME_MAX=64` to match the board. The copy bundled with the 2.0.x core breaks on paths over 32 characters (`make CPPFLAGS="-D LFS_NAME_MAX=64"`, or edit its Makefile)
 
 `tools/pack_www.py` makes a few changes to The Shelf's page for the board:

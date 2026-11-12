@@ -134,6 +134,10 @@ bool handleMessagingApi(AsyncWebServerRequest* r, const String& url, WebRequestM
 bool handleBoardApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);
 bool handleCardApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);   // microSD backup/restore
 bool isCardFileUpload(const String& url);
+// bt.cpp: Bluetooth headsets (plain ESP32 only; empty elsewhere)
+void btBegin();
+bool btActive();
+bool handleBtApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);
 // ota.cpp: firmware updates over Wi-Fi
 bool isOtaUpload(const String& url);
 void otaBody(AsyncWebServerRequest* r, uint8_t* data, size_t len, size_t index, size_t total);

@@ -342,6 +342,115 @@
   };
 })();
 
+// ---- Bluetooth (plain ESP32 boards only): pair a headset and play the Music shelf on it ----
+// The board itself plays the songs from its card to the headset, so nothing has to stay open
+// on the phone. Only MP3 and WAV songs can go to the headset.
+(function () {
+  let timer = null, songs = null, filter = '', lastSig = '';
+  const post = (u, d) => fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d || {}) }).then(r => r.json()).catch(() => ({}));
+  const viewing = () => typeof state !== 'undefined' && state.view === 'bluetooth';
+  const playable = n => /\.(mp3|wav)$/i.test(n);
+  const pathOf = f => decodeURIComponent(String(f.url || '').replace(/^\/shared/, '')) || ('/Music/' + f.name);
+  const mmss = s => { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  const bars = rssi => rssi > -60 ? '▂▄▆█' : rssi > -72 ? '▂▄▆' : rssi > -84 ? '▂▄' : '▂';
+  const songName = p => (p || '').split('/').pop().replace(/\.[^.]+$/, '');
+
+  async function loadSongs() {
+    try { songs = (await fetch('/api/files?category=Music').then(r => r.json())).sort((a, b) => a.name.localeCompare(b.name)); } catch { songs = []; }
+    drawSongs();
+  }
+  function shown() { const q = filter.trim().toLowerCase(); return (songs || []).filter(f => playable(f.name) && (!q || f.name.toLowerCase().includes(q))); }
+  function drawSongs() {
+    const box = document.getElementById('btSongs'); if (!box) return;
+    if (!songs) { box.innerHTML = '<div class="bt-empty">Loading songs…</div>'; return; }
+    const list = shown(), other = (songs || []).filter(f => !playable(f.name)).length;
+    box.innerHTML = (list.length ? list.map((f, i) => `<button class="bt-song" data-i="${i}"><span class="bt-play">▶</span><span>${escapeHtml(f.name.replace(/\.[^.]+$/, ''))}</span></button>`).join('')
+      : `<div class="bt-empty">${songs.length ? 'No songs match.' : 'No songs on the Music shelf yet.'}</div>`) +
+      (other ? `<div class="bt-note">${other} song${other === 1 ? '' : 's'} in other formats (M4A, FLAC, MIDI…) can only play in the browser.</div>` : '');
+    box.querySelectorAll('.bt-song').forEach(b => b.onclick = () => play(+b.dataset.i, false));
+  }
+  async function play(index, shuffle) {
+    const list = shown(); if (!list.length) return;
+    await post('/api/bt/play', { paths: list.map(pathOf), index, shuffle });
+    refresh(true);
+  }
+
+  function render(b) {
+    const content = el('#content');
+    if (!content.querySelector('.bt')) {
+      content.innerHTML = `<div class="bt coms">
+        <div class="coms-card" id="btHead"></div>
+        <div class="coms-card" id="btNow"></div>
+        <div class="coms-card"><div class="bt-row"><b>Music</b><span class="bt-grow"></span>
+          <button class="tool-action-btn tool-action-btn-secondary" id="btAll">Play all</button><button class="tool-action-btn tool-action-btn-secondary" id="btShuf">Shuffle all</button></div>
+          <input type="search" id="btFilter" class="bt-search" placeholder="Find a song" value="${escapeHtml(filter)}">
+          <div id="btSongs" class="bt-songs"></div></div></div>`;
+      content.querySelector('#btFilter').oninput = e => { filter = e.target.value; drawSongs(); };
+      content.querySelector('#btAll').onclick = () => play(0, false);
+      content.querySelector('#btShuf').onclick = () => play(0, true);
+      drawSongs();
+    }
+    // headset
+    const head = content.querySelector('#btHead');
+    let h = `<div class="coms-top"><label class="toggle-switch"><input type="checkbox" id="btPower" ${b.on ? 'checked' : ''}><span class="toggle-slider"></span></label>
+      <span class="power-label">${!b.on ? 'Bluetooth is off' : b.connected ? 'Connected to ' + escapeHtml(b.headset.name || 'your headset') : b.held ? 'Not connected' : b.target ? 'Connecting…' : b.saved.mac ? 'Looking for ' + escapeHtml(b.saved.name || 'your headset') + '…' : 'Looking for headsets…'}</span>
+      <span class="sub">${b.on ? 'The board plays your music straight to a Bluetooth headset or speaker.' : 'Turn it on to play music from this board on a Bluetooth headset or speaker. The board restarts to switch it on or off.'}</span></div>`;
+    if (b.on && b.started) {
+      if (b.connected) h += `<div class="bt-row"><button class="tool-action-btn tool-action-btn-secondary" id="btDisc">Disconnect</button><button class="tool-action-btn tool-action-btn-secondary" id="btForget">Forget this headset</button></div>`;
+      else {
+        h += `<p class="bt-help">Put the headset in pairing mode (usually: hold its power button until the light flashes). It shows up here in a few seconds; tap it to connect.${b.saved.mac ? ' It reconnects to <b>' + escapeHtml(b.saved.name || b.saved.mac) + '</b> on its own when that one is on.' : ''}</p>`;
+        h += (b.found.length ? `<div class="bt-found">${b.found.map(d => `<button class="bt-dev" data-mac="${d.mac}"><span>${escapeHtml(d.name)}</span><span class="bt-sig">${bars(d.rssi)}</span><span class="bt-act">${b.target === d.mac ? 'Connecting…' : 'Connect'}</span></button>`).join('')}</div>`
+          : '<div class="bt-empty">Nothing found yet…</div>');
+        h += `<div class="bt-row"><button class="tool-action-btn tool-action-btn-secondary" id="btScan">Search again</button>${b.saved.mac ? '<button class="tool-action-btn tool-action-btn-secondary" id="btForget">Forget ' + escapeHtml(b.saved.name || 'saved headset') + '</button>' : ''}</div>`;
+      }
+    }
+    if (b.error) h += `<div class="bt-note">${escapeHtml(b.error)}</div>`;
+    head.innerHTML = h;
+    head.querySelector('#btPower').onchange = async e => {
+      head.querySelector('.power-label').textContent = 'Restarting the board…';
+      await post('/api/bt/power', { on: e.target.checked });
+      setTimeout(() => location.reload(), 9000);
+    };
+    const on = (id, f) => { const x = head.querySelector(id); if (x) x.onclick = f; };
+    on('#btDisc', async () => { await post('/api/bt/disconnect'); refresh(true); });
+    on('#btForget', async () => { await post('/api/bt/forget'); refresh(true); });
+    on('#btScan', async () => { await post('/api/bt/scan'); refresh(true); });
+    head.querySelectorAll('.bt-dev').forEach(x => x.onclick = async () => { await post('/api/bt/connect', { mac: x.dataset.mac }); refresh(true); });
+    // now playing
+    const p = b.player, now = content.querySelector('#btNow');
+    const track = p.track ? songName(p.track) : '';
+    now.innerHTML = `<div class="bt-row"><b>${track ? escapeHtml(track) : 'Nothing playing'}</b><span class="bt-grow"></span><span class="bt-time">${track ? mmss(p.pos) + (p.dur ? ' / ' + mmss(p.dur) : '') : ''}</span></div>
+      ${track ? `<div class="bt-sub">${p.index + 1} of ${p.count}${p.shuffle ? ' · shuffled' : ''}${b.connected ? '' : ' · waiting for the headset'}</div>` : `<div class="bt-sub">${b.connected ? 'Pick a song below.' : 'Connect a headset, then pick a song below.'}</div>`}
+      <div class="bt-ctl"><button id="btPrev" title="Previous">⏮</button><button id="btPP" class="bt-big" title="Play/pause">${p.playing ? '❚❚' : '▶'}</button><button id="btNext" title="Next">⏭</button><button id="btStop" title="Stop">■</button>
+      <span class="bt-vol">🔊 <input type="range" id="btVol" min="0" max="100" value="${p.volume}"></span></div>`;
+    const ctl = c => async () => { await post('/api/bt/control', { cmd: c }); refresh(true); };
+    now.querySelector('#btPrev').onclick = ctl('prev');
+    now.querySelector('#btNext').onclick = ctl('next');
+    now.querySelector('#btStop').onclick = ctl('stop');
+    now.querySelector('#btPP').onclick = ctl(p.playing ? 'pause' : 'resume');
+    let vt = 0; now.querySelector('#btVol').oninput = e => { clearTimeout(vt); const v = +e.target.value; vt = setTimeout(() => post('/api/bt/control', { volume: v }), 150); };
+  }
+
+  async function refresh(force) {
+    if (!viewing()) { clearInterval(timer); timer = null; return; }
+    let b; try { b = await fetch('/api/bt').then(r => r.json()); } catch { return; }
+    const sig = JSON.stringify([b, Math.round(b.player.pos)]);
+    if (!force && sig === lastSig) return;
+    lastSig = sig;
+    if (document.activeElement && document.activeElement.id === 'btVol') return;   // don't move the slider under a finger
+    render(b);
+  }
+
+  window.loadBtView = function () {
+    setToolHeader('Bluetooth', 'Play music from this board on a Bluetooth headset', null, null);
+    el('#content').innerHTML = '';
+    lastSig = ''; songs = null;
+    refresh(true); loadSongs();
+    clearInterval(timer);
+    timer = setInterval(() => refresh(false), 1500);
+  };
+})();
+
 // ---- iPhone/iPad: visualizer bars that start quickly, and lock-screen controls that stay ----
 // The Shelf draws the bars on iOS from the song itself: it downloads the whole file a second
 // time and decodes it. From the board that takes a while, and when it's too slow The Shelf

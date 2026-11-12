@@ -38,11 +38,60 @@ bool isOtaUpload(const String& url) { return url == "/api/board/update/app" || u
 
 static const esp_partition_t* wwwPart() { return esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "www"); }
 
+// A plain ESP32 has no room for a second copy of the firmware: the new one is saved on the
+// microSD card and a small loader in the second slot (ShelfLoader/) installs it on restart.
+#if defined(SHELF_ESP32)
+  #define OTA_VIA_CARD 1
+  #define CARD_UPDATE "/.shelf/update-app.bin"
+  static File cardFile;
+  static uint8_t* cardBuf = nullptr; static size_t cardFill = 0; static uint32_t cardSynced = 0;
+  static const esp_partition_t* shelfPart() { return esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, nullptr); }
+  static const esp_partition_t* loaderPart() { return esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, nullptr); }
+#endif
+static bool toCard = false;
+
 static void fail(OtaReq* q, const String& why) {
   if (!q->err[0]) strlcpy(q->err, why.c_str(), sizeof q->err);
   if (Update.isRunning()) Update.abort();
+#ifdef OTA_VIA_CARD
+  if (toCard) { if (cardFile) cardFile.close(); store->remove(CARD_UPDATE); }
+#endif
+  toCard = false;
   otaOwner = nullptr; otaPercent = -1;
 }
+
+#ifdef OTA_VIA_CARD
+static bool cardBegin(OtaReq* q, size_t total) {
+  const esp_partition_t* app = shelfPart();
+  if (!loaderPart() || !app) { fail(q, "This board needs one USB install of 1.9.1 or later from the installer page first."); return false; }
+  if (!onSD) { fail(q, "Fit the microSD card first: the update is saved there before it's installed."); return false; }
+  if (total > app->size) { fail(q, "That firmware is too big for this board. Is it the right board's file?"); return false; }
+  mkdirs("/.shelf"); store->remove(CARD_UPDATE);
+  cardFile = store->open(CARD_UPDATE, FILE_WRITE);
+  if (!cardBuf) cardBuf = (uint8_t*)malloc(8192);
+  if (!cardFile || !cardBuf) { fail(q, "Couldn't save the update on the card."); return false; }
+  cardFill = 0; cardSynced = 0; toCard = true;
+  return true;
+}
+static void cardWrite(OtaReq* q, uint8_t* data, size_t len, size_t index, size_t total) {
+  while (len) {                                                  // 8 KB at a time, retrying a refused block
+    size_t n = std::min(len, (size_t)8192 - cardFill);
+    memcpy(cardBuf + cardFill, data, n); cardFill += n; data += n; len -= n; index += n;
+    if (cardFill == 8192 || index >= total) {
+      if (!writeBlockRetry(cardFile, CARD_UPDATE, cardBuf, cardFill, cardSynced)) { fail(q, "The card didn't take the update. Try again, or try another card."); return; }
+      cardFill = 0;
+    }
+  }
+  otaPercent = total ? (int)(index * 100 / total) : 100;
+  if (index < total) return;
+  cardFile.close();
+  File chk = store->open(CARD_UPDATE, FILE_READ); size_t got = chk ? chk.size() : 0; uint8_t m = 0; if (chk) { chk.read(&m, 1); chk.close(); }
+  if (got != total || m != 0xE9) { fail(q, "The update didn't save properly on the card. Try again."); return; }
+  // start in the loader next time: it installs the file and starts The Shelf again
+  if (esp_ota_set_boot_partition(loaderPart()) != ESP_OK) { fail(q, "Couldn't hand over to the loader."); return; }
+  q->ok = true; toCard = false; otaOwner = nullptr; otaPercent = -1;
+}
+#endif
 
 void otaBody(AsyncWebServerRequest* r, uint8_t* data, size_t len, size_t index, size_t total) {
   OtaReq* q = (OtaReq*)r->_tempObject;
@@ -54,6 +103,7 @@ void otaBody(AsyncWebServerRequest* r, uint8_t* data, size_t len, size_t index, 
     if (!canWrite(r)) { fail(q, "The Shelf is in read-only mode. Unlock write mode first."); return; }
     if (r->client()) r->client()->setRxTimeout(30);
     if (Update.isRunning()) Update.abort();                      // an earlier update that was cut off
+    toCard = false;
     bool www = r->url().endsWith("/www");
     if (www) {
       const esp_partition_t* p = wwwPart();
@@ -62,6 +112,9 @@ void otaBody(AsyncWebServerRequest* r, uint8_t* data, size_t len, size_t index, 
       LittleFS.end();                                            // it's about to be rewritten
       if (!Update.begin(total, U_SPIFFS)) { fail(q, String("Couldn't start: ") + Update.errorString()); return; }
     } else {
+#ifdef OTA_VIA_CARD
+      if (!cardBegin(q, total)) return;
+#else
       const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
       if (!next || next == esp_ota_get_running_partition()) {
         fail(q, "This board has one firmware slot. Install 1.9.0 or later once over USB from the installer page; after that it updates over Wi-Fi.");
@@ -69,11 +122,15 @@ void otaBody(AsyncWebServerRequest* r, uint8_t* data, size_t len, size_t index, 
       }
       if (total > next->size) { fail(q, "That firmware is too big for this board. Is it the right board's file?"); return; }
       if (!Update.begin(total, U_FLASH)) { fail(q, String("Couldn't start: ") + Update.errorString()); return; }
+#endif
     }
     otaOwner = r; otaWhat = www ? 'w' : 'a'; otaPercent = 0;
     screenWake();
   }
   if (!q || q->err[0] || otaOwner != r) return;
+#ifdef OTA_VIA_CARD
+  if (toCard) { cardWrite(q, data, len, index, total); return; }
+#endif
   if (Update.write(data, len) != len) { fail(q, String("Writing failed: ") + Update.errorString()); return; }
   otaPercent = total ? (int)((index + len) * 100 / total) : 100;
   if (index + len >= total) {
@@ -184,6 +241,9 @@ bool handleOtaApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod 
     const esp_partition_t* app0 = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, nullptr);
     const esp_partition_t* w = wwwPart();
     bool slots = next && next != run;
+#ifdef OTA_VIA_CARD
+    next = shelfPart(); slots = loaderPart() && next;      // the update goes to the card, then over The Shelf
+#endif
     sendJson(r, 200, String("{\"fw\":\"" FW_VERSION "\",\"id\":\"" FW_ID "\",\"board\":\"" BOARD_NAME "\",\"slots\":") + (slots ? "true" : "false") +
                      ",\"running\":\"" + (run ? run->label : "?") + "\",\"appOffset\":" + (app0 ? app0->address : 0x10000) +
                      ",\"appMax\":" + (slots ? next->size : (run ? run->size : 0)) +

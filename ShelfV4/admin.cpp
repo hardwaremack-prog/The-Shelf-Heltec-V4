@@ -115,6 +115,7 @@ bool allowedWhenReadOnly(const String& url, WebRequestMethod m) {
   if (url.startsWith("/api/messaging/")) return true;                 // Messages and other Shelves saying hello
   if (url == "/api/coms/send" || url.startsWith("/api/coms/remote/")) return true;
   if (url == "/api/board/time") return true;
+  if (url.startsWith("/api/bt/") && url != "/api/bt/power" && url != "/api/bt/forget") return true;   // playing to a headset
   if (url.startsWith("/api/files/") && (url.endsWith("/play") || url.endsWith("/thumbnail"))) return true;   // play counts, auto thumbnails
   return false;
 }

@@ -110,3 +110,27 @@
 /* why an upload failed (The Shelf only says "failed") */
 #uploadList li { flex-wrap: wrap; }
 .upload-why { flex-basis: 100%; font-size: 12px; color: var(--coral); margin-top: 4px; }
+
+/* Bluetooth (plain ESP32 boards) */
+.bt-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.bt-row:first-child { margin-top: 0; }
+.bt-grow { flex: 1; }
+.bt-help { color: var(--text-muted); font-size: 13.5px; margin: 12px 0 8px; }
+.bt-found, .bt-songs { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.bt-songs { max-height: 52vh; overflow-y: auto; }
+.bt-dev, .bt-song { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: var(--ink-deep, rgba(0,0,0,.2)); border: 1px solid var(--divider); color: var(--text); border-radius: 10px; padding: 10px 12px; font: inherit; cursor: pointer; }
+.bt-dev:hover, .bt-song:hover { border-color: var(--cat-Music); }
+.bt-dev span:first-child { flex: 1; font-weight: 600; }
+.bt-sig { color: var(--text-muted); font-size: 12px; letter-spacing: -1px; }
+.bt-act { color: var(--cat-Music); font-weight: 600; font-size: 13px; }
+.bt-play { color: var(--cat-Music); font-size: 12px; }
+.bt-empty { color: var(--text-muted); font-size: 13.5px; padding: 8px 2px; }
+.bt-note { color: var(--text-muted); font-size: 12.5px; margin-top: 8px; }
+.bt-sub { color: var(--text-muted); font-size: 13px; margin-top: 2px; }
+.bt-time { color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 13px; }
+.bt-ctl { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.bt-ctl button { background: none; border: 1px solid var(--divider); color: var(--text); border-radius: 999px; width: 40px; height: 40px; font-size: 15px; cursor: pointer; }
+.bt-ctl .bt-big { background: var(--cat-Music); color: var(--ink); border: none; width: 48px; height: 48px; }
+.bt-vol { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--text-muted); }
+.bt-vol input { width: 120px; }
+.bt-search { width: 100%; margin-top: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--divider); background: var(--ink-deep, rgba(0,0,0,.2)); color: var(--text); font: inherit; font-size: 16px; }

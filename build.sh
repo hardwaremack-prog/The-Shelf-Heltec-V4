@@ -54,11 +54,19 @@ build() {   # name psram-option flash-size partitions app-size www-offset extra-
     --library "$PWD/libraries/SD" --library "$PWD/libraries/AsyncTCP" \
     ${TOOLPROPS[@]+"${TOOLPROPS[@]}"} --build-path "$bd" ShelfV4
   rm -f ShelfV4/partitions.csv
+  local extra=()
+  if [[ "$defs" == *SHELF_ESP32* ]]; then   # its update loader goes in the second app slot (see ShelfLoader/)
+    cp "partitions/$parts" ShelfLoader/partitions.csv
+    arduino-cli compile --fqbn "$fqbn" --build-property "upload.maximum_size=393216" \
+      --library "$PWD/libraries/SD" ${TOOLPROPS[@]+"${TOOLPROPS[@]}"} --build-path "build/$name-loader" ShelfLoader
+    rm -f ShelfLoader/partitions.csv
+    extra=(0x270000 "build/$name-loader/ShelfLoader.ino.bin")
+  fi
   local boot_app0
   boot_app0="$(find "$CORE" "$HOME/.arduino15" -name boot_app0.bin 2>/dev/null | head -1)"
   $ESPTOOL --chip "$chip" merge_bin -o "build/$name-full.bin" --flash_mode keep --flash_freq keep --flash_size "${flash}B" \
     "$boot" "$bd/ShelfV4.ino.bootloader.bin" 0x8000 "$bd/ShelfV4.ino.partitions.bin" \
-    0xe000 "$boot_app0" 0x10000 "$bd/ShelfV4.ino.bin" "$wwwoff" "$www"
+    0xe000 "$boot_app0" 0x10000 "$bd/ShelfV4.ino.bin" ${extra[@]+"${extra[@]}"} "$wwwoff" "$www"
   # the two pieces the installer writes, skipping the saved settings in between
   python3 - "build/$name-full.bin" "docs/firmware/$name" <<'PY'
 import sys
@@ -79,5 +87,5 @@ PY
 build shelf-v4    enabled  16M   v4_16mb.csv      2097152  0x410000  ""          cdc
 build shelf-v4-r8 opi      16M   v4_16mb.csv      2097152  0x410000  ""          cdc
 build shelf-v3    disabled 8M    v3_8mb.csv       1703936  0x350000  -DSHELF_V3  default   # V3 talks USB through a CP2102
-build shelf-esp32 disabled 4M    esp32_4mb.csv    1441792  0x2D0000  -DSHELF_ESP32 -       # USB through a CP2102/CH340
+build shelf-esp32 disabled 4M    esp32_4mb.csv    2490368  0x2D0000  -DSHELF_ESP32 -       # USB through a CP2102/CH340
 ls -la docs/firmware

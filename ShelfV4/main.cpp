@@ -270,6 +270,10 @@ static void startAP() {
   WiFi.mode((wifiSSID.length() && !hotspotMode) ? WIFI_AP_STA : WIFI_AP);
   // channel 1, visible, up to 8 phones/laptops at once
   WiFi.softAP(ownSSID.c_str(), ownPass.length() >= 8 ? ownPass.c_str() : nullptr, 1, 0, 8);
+#ifdef AP_IP
+  // this board's own Wi-Fi has a fixed address (phones get 10.1.1.100 and up)
+  WiFi.softAPConfig(IPAddress(AP_IP), IPAddress(AP_IP), IPAddress(255, 255, 255, 0), IPAddress(AP_DHCP_START));
+#endif
   if (firstSetup) {
     // First setup: act as a captive portal so the phone pops up the setup page.
     dns.start(53, "*", WiFi.softAPIP());
@@ -295,7 +299,9 @@ static void stopAP() {
 }
 static void onJoined() {
   staOK = true;
-  WiFi.setSleep(false);
+#if !defined(SHELF_ESP32)
+  WiFi.setSleep(false);       // (a plain ESP32 with Bluetooth on must keep Wi-Fi power saving, or it aborts)
+#endif
   startMDNS();
   if (!ntpStarted) { configTime(0, 0, "pool.ntp.org", "time.google.com"); ntpStarted = true; }
 }
@@ -466,7 +472,7 @@ class ShelfHandler : public AsyncWebHandler {
       return;
     }
     if (serveContent(r, url)) return;
-    bool done = handleOtaApi(r, url, m) || handleCardApi(r, url, m) || handleBoardApi(r, url, m) || handleComsApi(r, url, m) || handleMessagingApi(r, url, m) || handleFilesApi(r, url, m) || handleToolsApi(r, url, m);
+    bool done = handleOtaApi(r, url, m) || handleBtApi(r, url, m) || handleCardApi(r, url, m) || handleBoardApi(r, url, m) || handleComsApi(r, url, m) || handleMessagingApi(r, url, m) || handleFilesApi(r, url, m) || handleToolsApi(r, url, m);
     if (!done) sendErr(r, 404, "Not found");
     cleanup(r);
   }
@@ -519,7 +525,11 @@ static void handleButton() {
     btnDown = false; lastActivity = now;
     if (held >= 6000 && held < 12000) {
       oledMsg("Wi-Fi reset", "Forgetting network...", "Restarting in setup", "mode");
-      prefs.remove("ssid"); prefs.remove("pass"); prefs.remove("mode"); delay(1200); ESP.restart();
+      prefs.remove("ssid"); prefs.remove("pass"); prefs.remove("mode");
+#if defined(SHELF_ESP32)
+      prefs.remove("apssid"); prefs.remove("appass");   // no screen: back to TheShelf32c / theshelf, so you can always get in
+#endif
+      delay(1200); ESP.restart();
     }
     if (held < 800 && !screenOn) { screenOn = true; oledPower(0); }
   }
@@ -588,8 +598,8 @@ void setup() {
   hostName = prefs.getString("host", String(HOST_PREFIX) + tag);
   wifiSSID = prefs.getString("ssid", "");
   wifiPass = prefs.getString("pass", "");
-  hotspotMode = prefs.getString("mode", "") == "hotspot";
-  ownSSID = prefs.getString("apssid", apName);
+  hotspotMode = prefs.getString("mode", DEFAULT_MODE) == "hotspot";
+  ownSSID = prefs.getString("apssid", strlen(DEFAULT_AP_SSID) ? String(DEFAULT_AP_SSID) : apName);
   ownPass = prefs.getString("appass", AP_PASS);
   firstSetup = !hotspotMode && !wifiSSID.length();
   adminBegin();
@@ -597,6 +607,7 @@ void setup() {
   if (!LittleFS.begin(false, "/www", 10, "www")) oledMsg("Web app missing", "Re-flash from the", "installer page");
   setupStorage();
   refreshStats();
+  btBegin();                  // plain ESP32 only: Bluetooth headsets (bt.cpp)
 
   WiFi.persistent(false);
   WiFi.setHostname(hostName.c_str());
