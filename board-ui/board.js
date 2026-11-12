@@ -517,11 +517,13 @@
 // from the middle of an MP3 usually won't decode at all (most frames borrow bytes from the
 // frame before), which is why bars used to stop after the first few seconds. Decoding from
 // the start, cut on a whole frame, always works. The ID3 tag (cover art can make it big) is
-// skipped. Other formats are fetched whole and decoded once.
+// skipped. Other formats are fetched whole and decoded once. Pieces are kept under 256 KB, so a
+// plain ESP32 never counts them as a second stream of the song (it limits those), and a piece that
+// fails is asked for again rather than ending the bars for the song.
 (function () {
   if (typeof IS_IOS === 'undefined' || !IS_IOS || typeof preparePcmViz !== 'function') return;
   try { ensureShadowVisualizer = function () {}; } catch (e) {}           // never the hidden second player
-  const NET = 384 * 1024, FIRST = 96 * 1024, GROW = 3, WHOLE_MAX = 40 * 1048576;
+  const NET = 224 * 1024, FIRST = 96 * 1024, GROW = 3, WHOLE_MAX = 40 * 1048576;
   const isMidiUrl = u => /\.(mid|midi|kar|rmi)$/i.test(String(u).split('?')[0]);
   const isMp3Url = u => /\.mp3$/i.test(decodeURIComponent(String(u).split('?')[0]));
   const BR = { 1: [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320],   // MPEG-1 Layer III
@@ -569,9 +571,18 @@
       while (true) {
         if (!live()) return;
         if (pos < total) {
-          const r = await fetch(src, { headers: { Range: 'bytes=' + pos + '-' + (pos + NET - 1) } });
-          if (r.status !== 206 && r.status !== 200) throw new Error('fetch ' + r.status);
-          const piece = new Uint8Array(await r.arrayBuffer());
+          let r, piece;
+          for (let tries = 0; ; tries++) {                                   // a busy board can drop a piece: ask again
+            try {
+              r = await fetch(src, { headers: { Range: 'bytes=' + pos + '-' + (pos + NET - 1) } });
+              if (r.status !== 206 && r.status !== 200) throw new Error('fetch ' + r.status);
+              piece = new Uint8Array(await r.arrayBuffer());
+              break;
+            } catch (e) {
+              if (tries >= 6 || !live()) throw e;
+              await new Promise(res => setTimeout(res, 1000 * (tries + 1)));
+            }
+          }
           if (r.status === 200) { total = piece.length; pos = 0; have = 0; }
           else { const cr = r.headers.get('Content-Range'); total = cr ? (+cr.split('/')[1] || Infinity) : Infinity; }
           if (!piece.length) total = pos;
