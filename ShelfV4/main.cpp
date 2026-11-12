@@ -292,6 +292,7 @@ static void startAP() {
   }
   apActive = true;
   startMDNS();
+  Serial.printf("[shelf] own Wi-Fi \"%s\" up at %s\n", ownSSID.c_str(), WiFi.softAPIP().toString().c_str());
 }
 static void stopAP() {
   if (!apActive) return;
@@ -299,6 +300,7 @@ static void stopAP() {
 }
 static void onJoined() {
   staOK = true;
+  Serial.printf("[shelf] joined \"%s\" as %s\n", wifiSSID.c_str(), WiFi.localIP().toString().c_str());
 #if !defined(SHELF_ESP32)
   WiFi.setSleep(false);       // (a plain ESP32 with Bluetooth on must keep Wi-Fi power saving, or it aborts)
 #endif

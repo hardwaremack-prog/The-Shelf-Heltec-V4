@@ -26,6 +26,8 @@
 #include <AudioOutput.h>
 #include <Preferences.h>
 #include <esp_bt.h>
+#include <esp_gap_bt_api.h>
+#include <esp_coexist.h>
 #include <algorithm>
 
 #define BT_NAME "TheShelf32c"
@@ -155,6 +157,19 @@ static void playerTask(void*) {
 }
 
 // ---- Bluetooth
+// Bluetooth and Wi-Fi share one radio. Searching for headsets takes most of it, and the library
+// would search without end while no headset is connected, so Wi-Fi (and the web page) went
+// silent. Searching now only happens in short windows: once at start (if no headset is saved),
+// and when Scan or Connect is pressed.
+static volatile uint32_t searchUntil = 0;
+static void onDiscovery(esp_bt_gap_discovery_state_t st) {
+  if (st == ESP_BT_GAP_DISCOVERY_STARTED && (int32_t)(millis() - searchUntil) > 0) a2dp.cancel_discovery();
+}
+static void startSearch(uint32_t ms) {
+  searchUntil = millis() + ms;
+  if (!connected && !a2dp.is_discovery_active()) esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY, 10, 0);
+}
+
 static String macStr(const uint8_t* a) { char b[18]; snprintf(b, sizeof b, "%02X:%02X:%02X:%02X:%02X:%02X", a[0], a[1], a[2], a[3], a[4], a[5]); return b; }
 
 static bool onFound(const char* name, esp_bd_addr_t addr, int rssi) {
@@ -172,6 +187,7 @@ static bool onFound(const char* name, esp_bd_addr_t addr, int rssi) {
 static void onState(esp_a2d_connection_state_t st, void*) {
   BtLock l;
   connected = st == ESP_A2D_CONNECTION_STATE_CONNECTED;
+  esp_coex_preference_set(connected ? ESP_COEX_PREFER_BALANCE : ESP_COEX_PREFER_WIFI);
   if (connected) {
     connMac = macStr(*a2dp.get_last_peer_address());
     if (!connName.length()) for (auto& f : found) if (f.mac == connMac) connName = f.name;
@@ -222,7 +238,11 @@ void btBegin() {
   a2dp.set_on_connection_state_changed(onState);
   a2dp.set_data_callback_in_frames(onFrames);
   a2dp.set_auto_reconnect(savedMac.length() > 0);
+  a2dp.set_discovery_mode_callback(onDiscovery);
+  searchUntil = savedMac.length() ? 0 : millis() + 15000;
   a2dp.start();
+  esp_coex_preference_set(ESP_COEX_PREFER_WIFI);
+  Serial.printf("[shelf] Bluetooth on, heap free %u\n", ESP.getFreeHeap());
   btRunning = true;
   xTaskCreatePinnedToCore(playerTask, "btplay", 6144, nullptr, 3, nullptr, 1);
 }
@@ -273,13 +293,14 @@ bool handleBtApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m
     return true;
   }
   if (!btRunning) { sendErr(r, 400, "Turn Bluetooth on first."); return true; }
-  if (url == "/api/bt/scan") { BtLock l; found.clear(); sendJson(r, 200, stateJson()); return true; }
+  if (url == "/api/bt/scan") { { BtLock l; found.clear(); } startSearch(14000); sendJson(r, 200, stateJson()); return true; }
   if (url == "/api/bt/connect") {
     String mac = b["mac"] | "";
     if (mac.length() != 17) { sendErr(r, 400, "Pick a headset."); return true; }
     { BtLock l; targetMac = mac; stayOff = false; connName = ""; for (auto& f : found) if (f.mac == mac) connName = f.name; }
     a2dp.set_auto_reconnect(false);
     if (connected) a2dp.disconnect();                   // the search starts again and finds it
+    startSearch(14000);
     sendJson(r, 200, stateJson());
     return true;
   }
