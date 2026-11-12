@@ -131,6 +131,11 @@ label.l{font-size:13px;color:var(--muted)}
   <div class="msg" id="cardMsg"></div>
   </div>
 
+  <h2>Thumbnails from your computer</h2>
+  <p class="tip">Copies the thumbnails for games, programs, books and videos, and the album art, from The Shelf on your computer for every file this board also has. Both need to be on the same Wi-Fi. Pictures the board already has are left alone.</p>
+  <div class="btns"><input id="thFrom" placeholder="10.0.0.80:8080" style="flex:1;min-width:160px"><button class="pri" id="thBtn" onclick="thImport()">Copy thumbnails</button></div>
+  <div class="msg" id="thMsg"></div>
+
   <h2>Firmware</h2>
   <p class="tip">Check for a newer version and install it over Wi-Fi. Your files, settings and passwords stay.</p>
   <div class="btns"><button class="pri" onclick="location.href='/update'">Update firmware&hellip;</button></div>
@@ -169,6 +174,15 @@ async function setRO(on){let pw='';if(!on&&!A.unlocked){pw=prompt('Admin passwor
 async function unlock(){try{await post('/api/admin/unlock',{password:$('#unlockPw').value});$('#unlockPw').value='';$('#unlockMsg').textContent='';loadAdmin()}catch(e){$('#unlockMsg').textContent=e.message;$('#unlockMsg').className='msg err'}}
 async function lockNow(){await post('/api/admin/lock');loadAdmin()}
 $('#unlockPw').addEventListener('keydown',e=>{if(e.key==='Enter')unlock()});
+async function thShow(){let j;try{j=await fetch('/api/thumbs/import').then(r=>r.json())}catch(e){return}
+  if(j.from&&!$('#thFrom').value)$('#thFrom').value=j.from.replace(/^http:\/\//,'');
+  $('#thBtn').disabled=j.running;
+  $('#thMsg').className='msg'+(j.error?' err':'');
+  $('#thMsg').textContent=j.error||(j.status?(j.status+(j.copied||j.skipped||j.failed?' · '+j.copied+' copied, '+j.skipped+' already here'+(j.failed?', '+j.failed+' failed':''):'')):'');
+  if(j.running)setTimeout(thShow,1500)}
+async function thImport(){const f=$('#thFrom').value.trim();if(!f){$('#thMsg').textContent='Type the address of The Shelf on your computer (it shows it on its own settings page).';return}
+  try{await post('/api/thumbs/import',{from:f});thShow()}catch(e){$('#thMsg').textContent=e.message;$('#thMsg').className='msg err'}}
+thShow();
 async function post(u,d){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d||{})});let j={};try{j=await r.json()}catch(e){}if(!r.ok)throw new Error(j.error||'Something went wrong');return j}
 async function load(){try{I=await fetch('/api/board/info').then(r=>r.json())}catch(e){return}
   if(I.storage==='microSD card'&&$('#cardSec').style.display==='none')setTimeout(loadCard,0);

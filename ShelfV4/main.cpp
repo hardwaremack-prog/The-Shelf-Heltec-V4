@@ -484,7 +484,7 @@ class ShelfHandler : public AsyncWebHandler {
     }
     try {
     if (serveContent(r, url)) return;
-    bool done = handleOtaApi(r, url, m) || handleBtApi(r, url, m) || handleCardApi(r, url, m) || handleBoardApi(r, url, m) || handleComsApi(r, url, m) || handleMessagingApi(r, url, m) || handleFilesApi(r, url, m) || handleToolsApi(r, url, m);
+    bool done = handleOtaApi(r, url, m) || handleBtApi(r, url, m) || handleThumbImportApi(r, url, m) || handleCardApi(r, url, m) || handleBoardApi(r, url, m) || handleComsApi(r, url, m) || handleMessagingApi(r, url, m) || handleFilesApi(r, url, m) || handleToolsApi(r, url, m);
     if (!done) sendErr(r, 404, "Not found");
     } catch (...) {
       // out of memory part-way through (a big list on a board without PSRAM): say so, keep running
