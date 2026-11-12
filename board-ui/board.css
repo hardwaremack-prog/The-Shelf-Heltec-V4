@@ -68,7 +68,7 @@
 .coms-devs { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; margin-top: 8px; }
 .coms-dev { display: flex; align-items: center; gap: 10px; background: var(--ink); border: 1px solid var(--divider); border-radius: 12px; padding: 9px 11px; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
 .coms-dev:hover { border-color: var(--accent); background: var(--surface-hover); }
-.cd-chip { width: 28px; height: 28px; border-radius: 7px; flex: none; display: grid; place-items: center; background: #2b4a7a; color: #dfe8f7; font-weight: 700; font-size: 11px; }
+.cd-chip { min-width: 28px; padding: 0 5px; box-sizing: border-box; height: 28px; border-radius: 7px; flex: none; display: grid; place-items: center; background: #2b4a7a; color: #dfe8f7; font-weight: 700; font-size: 11px; }
 .cd-main { flex: 1; min-width: 0; }
 .cd-main b { display: block; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-main small { color: var(--text-muted); font-size: 11px; }

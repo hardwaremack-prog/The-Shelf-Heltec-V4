@@ -1,5 +1,13 @@
 // The Shelf for Heltec V4 - 900MHz Coms: a simple LoRa text mesh between Shelf boards.
 //
+// 2.4 GHz too: every board (Heltec V3/V4 and plain ESP32) also sends and hears the same
+// packets over ESP-NOW, the ESP32's own board-to-board Wi-Fi frames. No router or Wi-Fi
+// network is needed between boards, and phones can stay joined to a board's own Wi-Fi while
+// it talks. A plain ESP32 (no LoRa) meshes over 2.4 GHz only; a Heltec carries messages
+// between the two, so 2.4 GHz and 900 MHz boards end up on one mesh. ESP-NOW only hears
+// boards on the same Wi-Fi channel: boards on their own Wi-Fi all use channel 1, and a board
+// joined to a home Wi-Fi uses its router's channel.
+//
 // Every board with Coms switched on is also a relay: anything new it hears is
 // re-sent once (after a short random wait) until the message's hop limit runs out.
 // Message ids are remembered so nothing loops. Not Meshtastic - its own channel.
@@ -28,6 +36,9 @@ struct SX1262 {
 };
 #endif
 #include <Preferences.h>
+#include <WiFi.h>
+#include <esp_now.h>
+#include <esp_wifi.h>
 
 // Heltec V4 radio wiring (from Heltec's datasheet / Meshtastic's heltec_v4 variant)
 #define LORA_NSS   8
@@ -55,7 +66,7 @@ static const uint8_t C_STATUS = 1, C_READONLY = 2, C_REBOOT = 3, C_SCREEN = 4, C
                      C_WIFI_OWN = 7, C_WIFI_HOME = 8, C_NAME = 9, C_PING = 10, C_LIST = 11;
 static const uint8_t RS_OK = 0, RS_BADPASS = 1, RS_STALE = 2, RS_UNKNOWN = 3, RS_NOADMIN = 4, RS_LOCKED = 5;
 static const uint32_t HELLO_EVERY_MS = 15UL * 60 * 1000;
-static const size_t REPLY_MAX = 255 - 27 - 8;          // remote-admin reply data, one packet
+static const size_t REPLY_MAX = 250 - 27 - 8;         // (250: the most one ESP-NOW frame carries)          // remote-admin reply data, one packet
 static const uint32_t SYNC_WINDOW_S = 12 * 3600;                  // catch-up covers the last 12 hours
 static const int SYNC_MAX = 60;
 // No practical hop limit: every board relays a message once and remembers its id, so a
@@ -112,7 +123,7 @@ static uint32_t seen[1024]; static int seenPos = 0;
 static bool wasSeen(uint32_t id) { for (uint32_t s : seen) if (s == id) return true; return false; }
 static void markSeen(uint32_t id) { seen[seenPos] = id; seenPos = (seenPos + 1) % 1024; }
 
-struct Tx { uint8_t buf[256]; size_t len; uint32_t due; };
+struct Tx { uint8_t buf[256]; size_t len; uint32_t due; bool nowSent; };
 static std::vector<Tx> txq;
 
 // Catch-up: a board that just came on asks its neighbors for the last 12 hours.
@@ -125,9 +136,56 @@ static uint32_t syncAskAt = 0, syncAsks = 0, syncedCount = 0;
 static volatile bool rxFlag = false;
 static void IRAM_ATTR onRx() { rxFlag = true; }
 
+// ---- 2.4 GHz: ESP-NOW broadcast frames, the same packets as on 900 MHz
+static bool nowUp = false;
+static uint32_t nowSentCount = 0, nowHeardCount = 0;
+struct NowPkt { uint8_t len; uint8_t buf[250]; };
+static const uint8_t NOW_RING = 8;
+static NowPkt nowRing[NOW_RING];
+static volatile uint8_t nowW = 0, nowR = 0;
+static portMUX_TYPE nowMux = portMUX_INITIALIZER_UNLOCKED;
+static const uint8_t BCAST[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+static wifi_interface_t nowIf = WIFI_IF_STA;
+
+static void onNowRecv(const uint8_t*, const uint8_t* data, int len) {   // Wi-Fi task: copy and go
+  if (len < 8 || len > 250 || data[0] != MAGIC0 || data[1] != MAGIC1) return;
+  portENTER_CRITICAL(&nowMux);
+  if ((uint8_t)(nowW - nowR) < NOW_RING) { NowPkt& p = nowRing[nowW % NOW_RING]; p.len = len; memcpy(p.buf, data, len); nowW++; }
+  portEXIT_CRITICAL(&nowMux);
+}
+// whichever side of Wi-Fi is running: its own network (AP) or the home one (STA)
+static wifi_interface_t pickIf() {
+  wifi_mode_t m = WIFI_MODE_NULL; esp_wifi_get_mode(&m);
+  if (m == WIFI_MODE_AP) return WIFI_IF_AP;
+  if (m == WIFI_MODE_STA) return WIFI_IF_STA;
+  return WiFi.status() == WL_CONNECTED ? WIFI_IF_STA : WIFI_IF_AP;
+}
+static bool nowStart() {
+  wifi_mode_t m = WIFI_MODE_NULL;
+  if (esp_wifi_get_mode(&m) != ESP_OK || m == WIFI_MODE_NULL) return false;
+  if (esp_now_init() != ESP_OK) return false;
+  esp_now_register_recv_cb(onNowRecv);
+  esp_now_peer_info_t peer = {};
+  memcpy(peer.peer_addr, BCAST, 6); peer.channel = 0; peer.encrypt = false; peer.ifidx = nowIf = pickIf();
+  if (esp_now_add_peer(&peer) != ESP_OK) { esp_now_deinit(); return false; }
+  return true;
+}
+static void nowStop() { if (nowUp) { esp_now_unregister_recv_cb(); esp_now_deinit(); } nowUp = false; nowR = nowW; }
+static void nowSend(const uint8_t* b, size_t len) {
+  if (!nowUp || len > 250) return;
+  wifi_interface_t want = pickIf();
+  if (want != nowIf) {                                   // Wi-Fi switched sides (joined or left home Wi-Fi)
+    esp_now_peer_info_t peer = {};
+    memcpy(peer.peer_addr, BCAST, 6); peer.channel = 0; peer.encrypt = false; peer.ifidx = nowIf = want;
+    esp_now_mod_peer(&peer);
+  }
+  if (esp_now_send(BCAST, b, len) == ESP_OK) nowSentCount++;
+}
+static uint8_t wifiChannel() { uint8_t ch = 0; wifi_second_chan_t sc; esp_wifi_get_channel(&ch, &sc); return ch; }
+
 // For the OLED
 String comsLastLine; uint32_t comsLastAt = 0;
-bool comsOn() { return enabled && radioUp; }
+bool comsOn() { return enabled && (radioUp || nowUp); }
 
 static String hex8(uint32_t v) { char b[9]; snprintf(b, sizeof b, "%08x", v); return b; }
 
@@ -220,9 +278,9 @@ static size_t buildPacket(uint8_t* b, uint32_t id, uint32_t origin, uint8_t hops
 }
 
 static void queueTx(const uint8_t* buf, size_t len, uint32_t delayMs) {
-  Tx t; memcpy(t.buf, buf, len); t.len = len; t.due = millis() + delayMs;
+  Tx t; memcpy(t.buf, buf, len); t.len = len; t.due = millis() + delayMs; t.nowSent = false;
   xSemaphoreTakeRecursive(comsLock, portMAX_DELAY);
-  if (txq.size() < 80) txq.push_back(t);
+  if (txq.size() < (ESP.getPsramSize() ? 80u : 24u)) txq.push_back(t);    // no PSRAM: a short queue
   xSemaphoreGiveRecursive(comsLock);
 }
 
@@ -293,12 +351,23 @@ static void handleReceipt(const uint8_t* b, size_t len) {
   }
 }
 
+// Store and forward for boards on the move: meeting a board we haven't heard for 20 minutes
+// (someone walking into range, or coming back) makes this board ask for the last 12 hours
+// again, so messages travel with people as they carry boards around. At most once a minute.
+static uint32_t lastMeetSync = 0;
+static void meetNeighbor(bool fresh) {
+  if (!fresh || (lastMeetSync && millis() - lastMeetSync < 60000)) return;
+  lastMeetSync = millis();
+  syncAsks = 1; syncAskAt = millis() + 2000 + esp_random() % 3000;      // one ask, after a short random wait
+}
 static void noteNeighbor(uint32_t sender, float rssi, float snr) {
   xSemaphoreTakeRecursive(comsLock, portMAX_DELAY);
   Neighbor* nb = nullptr; for (auto& x : neighbors) if (x.node == sender) nb = &x;
+  bool fresh = !nb || nowMs() - nb->at > 20ULL * 60 * 1000;
   if (!nb) { neighbors.push_back({sender, "", 0, 0, 0}); nb = &neighbors.back(); }
   nb->rssi = rssi; nb->snr = snr; nb->at = nowMs();
   xSemaphoreGiveRecursive(comsLock);
+  meetNeighbor(fresh);
 }
 static void handleMeshPacket(const uint8_t* b, size_t len, float rssi, float snr);
 
@@ -316,11 +385,7 @@ static void handlePacket(const uint8_t* b, size_t len, float rssi, float snr) {
   if (type == T_RECEIPT) {
     if (len >= 17) {                       // still note who we heard
       uint32_t sender; memcpy(&sender, b + 13, 4);
-      xSemaphoreTakeRecursive(comsLock, portMAX_DELAY);
-      Neighbor* nb = nullptr; for (auto& x : neighbors) if (x.node == sender) nb = &x;
-      if (!nb) { neighbors.push_back({sender, "", 0, 0, 0}); nb = &neighbors.back(); }
-      nb->rssi = rssi; nb->snr = snr; nb->at = nowMs();
-      xSemaphoreGiveRecursive(comsLock);
+      if (sender != myNode) noteNeighbor(sender, rssi, snr);
     }
     handleReceipt(b, len); return;
   }
@@ -339,10 +404,12 @@ static void handlePacket(const uint8_t* b, size_t len, float rssi, float snr) {
   {
     xSemaphoreTakeRecursive(comsLock, portMAX_DELAY);
     Neighbor* nb = nullptr; for (auto& x : neighbors) if (x.node == sender) nb = &x;
+    bool fresh = !nb || nowMs() - nb->at > 20ULL * 60 * 1000;
     if (!nb) { neighbors.push_back({sender, "", 0, 0, 0}); nb = &neighbors.back(); }
     if (sender == origin) nb->name = name;
     nb->rssi = rssi; nb->snr = snr; nb->at = nowMs();
     xSemaphoreGiveRecursive(comsLock);
+    if (sender != myNode && type == T_TEXT) meetNeighbor(fresh);   // (not for catch-up copies: those are a sync already)
   }
   if (origin == myNode || wasSeen(id)) return;
   markSeen(id);
@@ -395,7 +462,9 @@ static size_t header(uint8_t* b, uint8_t type, uint32_t id) {
 static void sendHello(bool answer) {
   uint8_t b[64]; uint32_t id = esp_random(); markSeen(id);
   size_t n = header(b, T_HELLO, id);
-#ifdef SHELF_V3
+#if defined(SHELF_ESP32)
+  b[n++] = 32;
+#elif defined(SHELF_V3)
   b[n++] = 3;
 #else
   b[n++] = 4;
@@ -534,25 +603,39 @@ static void handleMeshPacket(const uint8_t* b, size_t len, float rssi, float snr
   }
 }
 
+static bool linked = false;
+static uint32_t nowRetryAt = 0, radioRetryAt = 0;
 static void comsTask(void*) {
   for (;;) {
     if (!enabled) {
       if (radioUp) radioStop();
+      if (nowUp) nowStop();
+      linked = false;
       vTaskDelay(pdMS_TO_TICKS(200)); continue;
     }
-    if (!radioUp) {
-      radioUp = radioStart();
-      if (!radioUp) { vTaskDelay(pdMS_TO_TICKS(5000)); continue; }
+    if (!nowUp && (int32_t)(millis() - nowRetryAt) >= 0) { nowUp = nowStart(); if (!nowUp) nowRetryAt = millis() + 5000; }
+#ifndef SHELF_NO_RADIO
+    if (!radioUp && (int32_t)(millis() - radioRetryAt) >= 0) { radioUp = radioStart(); if (!radioUp) radioRetryAt = millis() + 5000; }
+#endif
+    if (!radioUp && !nowUp) { vTaskDelay(pdMS_TO_TICKS(500)); continue; }
+    if (!linked) {
+      linked = true;
       syncAsks = 0; syncAskAt = millis() + 3000 + esp_random() % 2000;   // ask for the last 12 hours shortly after starting
       helloAt = millis() + 6000 + esp_random() % 6000;                    // then say hello to the mesh
     }
-    if (rxFlag) {
+    if (radioUp && rxFlag) {
       rxFlag = false;
       uint8_t buf[256];
       size_t len = radio->getPacketLength();
       if (len > 0 && len <= sizeof buf && radio->readData(buf, len) == RADIOLIB_ERR_NONE)
         handlePacket(buf, len, radio->getRSSI(), radio->getSNR());
       radio->startReceive();
+    }
+    while (nowR != nowW) {                                 // 2.4 GHz: everything heard since last time
+      NowPkt p;
+      portENTER_CRITICAL(&nowMux); p = nowRing[nowR % NOW_RING]; nowR++; portEXIT_CRITICAL(&nowMux);
+      nowHeardCount++;
+      handlePacket(p.buf, p.len, 0, 0);                    // (0 dBm: heard over 2.4 GHz)
     }
     // just came on: ask the neighbors for the last 12 hours (again after 2 minutes, in case nobody heard)
     if (syncAsks < 2 && (int32_t)(millis() - syncAskAt) >= 0) {
@@ -604,7 +687,8 @@ static void comsTask(void*) {
     xSemaphoreTakeRecursive(comsLock, portMAX_DELAY);
     for (size_t i = 0; i < txq.size(); i++) if ((int32_t)(millis() - txq[i].due) >= 0) { t = txq[i]; txq.erase(txq.begin() + i); have = true; break; }
     xSemaphoreGiveRecursive(comsLock);
-    if (have) {
+    if (have && !t.nowSent) { nowSend(t.buf, t.len); t.nowSent = true; }   // 2.4 GHz goes straight out
+    if (have && radioUp) {
       int cad = radio->scanChannel();
       if (cad == RADIOLIB_LORA_DETECTED) {
         t.due = millis() + 300 + esp_random() % 900;
@@ -646,16 +730,20 @@ void comsBegin() {
     }
     rf.close();
   }
-#ifndef SHELF_NO_RADIO
   xTaskCreatePinnedToCore(comsTask, "coms", 8192, nullptr, 2, nullptr, 1);
-#endif
 }
 
 // ------------------------------------------------------------ HTTP
 bool handleComsApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m) {
   if (!url.startsWith("/api/coms")) return false;
   if (url == "/api/coms" && m == HTTP_GET) {
-    String s = String("{\"enabled\":") + (enabled ? "true" : "false") + ",\"radio\":" + (radioUp ? "true" : "false") +
+    String s = String("{\"enabled\":") + (enabled ? "true" : "false") + ",\"radio\":" + ((radioUp || nowUp) ? "true" : "false") +
+      ",\"lora\":" + (radioUp ? "true" : "false") + ",\"wifi\":" + (nowUp ? "true" : "false") + ",\"channel\":" + wifiChannel() +
+#ifdef SHELF_NO_RADIO
+      ",\"hasLora\":false" +
+#else
+      ",\"hasLora\":true" +
+#endif
       ",\"name\":\"" + jsonEsc(myName) + "\",\"node\":\"" + hex8(myNode) + "\",\"level\":" + level +
       ",\"receipts\":" + (receiptsOn ? "true" : "false") + ",\"levels\":" + LEVELS_DBM + ",\"freq\":915.0,\"heard\":" + heardCount + ",\"relayed\":" + relayedCount + ",\"sent\":" + sentCount + ",\"synced\":" + syncedCount +
       ",\"error\":\"" + jsonEsc(lastError) + "\",\"neighbors\":[";
@@ -720,7 +808,7 @@ bool handleComsApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod
   if (m != HTTP_POST) { sendErr(r, 405, "Use POST"); return true; }
   JsonDocument b(&psAlloc); parseBody(r, b);
   if (url.startsWith("/api/coms/remote/")) {
-    if (!enabled || !radioUp) { sendErr(r, 409, "Turn 900MHz Coms on first."); return true; }
+    if (!enabled || (!radioUp && !nowUp)) { sendErr(r, 409, "Turn Coms on first."); return true; }
     if (url == "/api/coms/remote/who") {
       uint8_t q[32]; uint32_t id = esp_random(); markSeen(id);
       size_t n = header(q, T_WHO, id);
@@ -779,7 +867,7 @@ bool handleComsApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod
     return true;
   }
   if (url == "/api/coms/send") {
-    if (!enabled) { sendErr(r, 409, "Turn 900MHz Coms on first."); return true; }
+    if (!enabled) { sendErr(r, 409, "Turn Coms on first."); return true; }
     String text = b["text"] | ""; text.trim();
     if (!text.length()) { sendErr(r, 400, "Type a message first."); return true; }
     if (text.length() > MAX_TEXT) { sendErr(r, 400, "That's too long for one radio message (180 characters max)."); return true; }

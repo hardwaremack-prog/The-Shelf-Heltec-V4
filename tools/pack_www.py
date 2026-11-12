@@ -40,9 +40,10 @@ if app == before:
     sys.exit("Couldn't find the TOOLS list in app.js -- The Shelf's layout changed; update pack_www.py")
 app = re.sub(r",(\s*\];\s*\nconst TOOL_LABELS)", r"\1", app)   # no trailing comma left behind
 # add the board's own tab: 900MHz Coms (drawn by board.js). A plain ESP32 has no LoRa radio.
-has_radio = board != "ESP32"
-app, n1 = re.subn(r"(\n(\s*)\{ key: 'tidysuite',)", r"\n\2{ key: 'coms', label: '900MHz Coms', color: '#E2725B' },\1", app, count=1 if has_radio else 0) if has_radio else (app, 1)
-app, n2 = re.subn(r"(else if \(key === 'tidysuite'\) loadTidySuiteView\(\);)", r"\1\n  else if (key === 'coms') window.loadComsView();", app, count=1) if has_radio else (app, 1)
+# (a plain ESP32 has no LoRa radio: its Coms run over 2.4 GHz only, and the tab says so)
+coms_label = "2.4GHz Mesh Coms" if board == "ESP32" else "900MHz Coms"
+app, n1 = re.subn(r"(\n(\s*)\{ key: 'tidysuite',)", r"\n\2{ key: 'coms', label: '" + coms_label + "', color: '#E2725B' },\1", app, count=1)
+app, n2 = re.subn(r"(else if \(key === 'tidysuite'\) loadTidySuiteView\(\);)", r"\1\n  else if (key === 'coms') window.loadComsView();", app, count=1)
 if not (n1 and n2):
     sys.exit("Couldn't add the 900MHz Coms tab to app.js -- The Shelf's layout changed; update pack_www.py")
 # a seventh shelf, MIDI: listed, uploaded and played like Music (board-ui/midi.js plays the files)
@@ -103,6 +104,7 @@ if board != "V4":
                           "Hold BOOT for 6 seconds and let go to forget the home Wi-Fi and go back to its own Wi-Fi, TheShelf32c (password theshelf) at http://10.1.1.250.")
             t = t.replace("Hold PRG", "Hold BOOT")
             t = t.replace("http://192.168.4.1", "http://10.1.1.250")   # its own Wi-Fi has a fixed address
+            t = t.replace("const BAND_NAME = '900MHz Coms';", "const BAND_NAME = '2.4GHz Mesh Coms';")
         f.write_text(t, encoding="utf-8")
 
 try:

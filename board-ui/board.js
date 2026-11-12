@@ -126,6 +126,10 @@
 (function () {
   let timer = null, last = '', drafting = false;
   const LEVEL_NAMES = ['Low', 'Normal', 'High'];
+  const BAND_NAME = '900MHz Coms';                 // a plain ESP32 (no LoRa) calls it 2.4GHz Mesh Coms
+  const NOLORA = BAND_NAME.startsWith('2.4');
+  const boardLabel = b => (+b === 32 ? 'ESP32' : 'V' + (b || '?'));
+  const sig = r => (r ? r + ' dBm' : '2.4 GHz');   // 0: heard over 2.4 GHz (no signal reading there)
   const ago = t => { const s = Math.max(0, (Date.now() - t) / 1000); return s < 60 ? 'just now' : s < 3600 ? Math.floor(s / 60) + ' min ago' : s < 86400 ? Math.floor(s / 3600) + ' h ago' : new Date(t).toLocaleDateString(); };
   const time = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const post = (u, d) => fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d || {}) });
@@ -155,7 +159,7 @@
       const d = new Date(m.t).toDateString(); let sep = '';
       if (d !== day) { day = d; sep = `<div class="coms-day">${escapeHtml(d === new Date().toDateString() ? 'Today' : new Date(m.t).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' }))}</div>`; }
       const got = (c.receivedBy || {})[m.id] || [];
-      const meta = m.mine ? `${time(m.t)} · ${got.length ? '\u2713 Received by ' + got.map(escapeHtml).join(', ') : 'sent'}` : `${time(m.t)} · ${m.hops ? m.hops + (m.hops === 1 ? ' hop' : ' hops') : 'direct'}${m.rssi !== undefined ? ' · ' + m.rssi + ' dBm' : ''}${m.synced ? ' · caught up' : ''}`;
+      const meta = m.mine ? `${time(m.t)} · ${got.length ? '\u2713 Received by ' + got.map(escapeHtml).join(', ') : 'sent'}` : `${time(m.t)} · ${m.hops ? m.hops + (m.hops === 1 ? ' hop' : ' hops') : 'direct'}${m.rssi !== undefined ? ' · ' + sig(m.rssi) : ''}${m.synced ? ' · caught up' : ''}`;
       return sep + `<div class="coms-msg ${m.mine ? 'mine' : ''}"><div class="who">${escapeHtml(m.mine ? 'You' : (m.from || 'Unknown'))}</div><div class="txt">${escapeHtml(m.text)}</div><div class="meta">${meta}</div></div>`;
     }).join('');
     content.innerHTML = `
@@ -163,13 +167,14 @@
         <div class="coms-card">
           <div class="coms-top">
             <label class="toggle-switch"><input type="checkbox" id="comsToggle" ${c.enabled ? 'checked' : ''}><span class="toggle-slider"></span></label>
-            <span class="power-label">${c.enabled ? (c.radio ? '900MHz Coms is on' : 'Starting the radio…') : '900MHz Coms is off'}</span>
+            <span class="power-label">${c.enabled ? (c.radio ? BAND_NAME + ' is on' : 'Starting the radio…') : BAND_NAME + ' is off'}</span>
             <span class="sub">${c.enabled ? 'This board is on the mesh and relays messages for everyone else on it.' : 'Turn it on to join the mesh. Any Shelf board with Coms on can talk, and each one relays for the others.'}</span>
           </div>
           ${c.enabled ? `
           <div class="coms-chips">
             <span class="coms-chip">You are <b>${escapeHtml(c.name)}</b></span>
-            <span class="coms-chip">${c.freq.toFixed(1)} MHz</span>
+            ${c.hasLora === false ? '' : `<span class="coms-chip">${c.freq.toFixed(1)} MHz${c.lora ? '' : ' (off)'}</span>`}
+            <span class="coms-chip" title="Boards hear each other over 2.4 GHz only on the same Wi-Fi channel">2.4 GHz${c.wifi ? ' · channel ' + c.channel : ' (off)'}</span>
             <span class="coms-chip">Heard <b>${c.heard}</b></span>
             <span class="coms-chip">Relayed <b>${c.relayed}</b></span>
             <span class="coms-chip">Caught up <b>${c.synced}</b></span>
@@ -177,15 +182,15 @@
           </div>
           <div class="coms-devs-head"><span>Boards on the mesh</span><button class="coms-chip coms-who" id="comsWho" title="Ask every board on the mesh to say hello">Refresh</button></div>
           <div class="coms-devs">${devs.length ? devs.map(d => `<button class="coms-dev" data-node="${d.node}">
-              <span class="cd-chip">V${d.board || '?'}</span>
-              <span class="cd-main"><b>${escapeHtml(d.name || d.node)}</b><small>${d.hops ? d.hops + (d.hops === 1 ? ' hop' : ' hops') : 'direct' + (d.rssi ? ' · ' + d.rssi + ' dBm' : '')} · ${d.batt < 0 ? 'USB' : d.batt + '%'} · ${ago(d.at)}${d.ro ? ' · 🔒' : ''}</small></span>
+              <span class="cd-chip">${boardLabel(d.board)}</span>
+              <span class="cd-main"><b>${escapeHtml(d.name || d.node)}</b><small>${d.hops ? d.hops + (d.hops === 1 ? ' hop' : ' hops') : 'direct · ' + sig(d.rssi)} · ${d.batt < 0 ? 'USB' : d.batt + '%'} · ${ago(d.at)}${d.ro ? ' · 🔒' : ''}</small></span>
               <span class="cd-go">${d.admin ? 'Manage ›' : '<span class="cd-none" title="Set an admin password on that board to manage it from here">No password</span>'}</span></button>`).join('')
             : '<div class="coms-neigh" style="margin:0">No boards yet. Each board says hello when it comes on and every 15 minutes. Tap Refresh to ask now.</div>'}</div>
-          <div class="coms-neigh">${neigh.length ? 'In range: ' + neigh.map(n => `<b style="color:var(--text)">${escapeHtml(n.name || n.node)}</b> (${n.rssi} dBm, ${ago(n.at)})`).join(', ') : 'No other boards heard yet. They show up here as soon as one transmits.'}</div>
+          <div class="coms-neigh">${neigh.length ? 'In range: ' + neigh.map(n => `<b style="color:var(--text)">${escapeHtml(n.name || n.node)}</b> (${sig(n.rssi)}, ${ago(n.at)})`).join(', ') : 'No other boards heard yet. They show up here as soon as one transmits.'}</div>
           <details style="margin-top:10px"><summary style="cursor:pointer;color:var(--text-muted);font-size:13px">Settings</summary>
             <div class="coms-settings">
               <label>Your name on the mesh<input id="comsName" maxlength="16" value="${escapeHtml(c.name)}"></label>
-              <label>Transmit power<select id="comsLevel">${LEVEL_NAMES.map((l, i) => `<option value="${i}" ${i === c.level ? 'selected' : ''}>${l} (~${(c.levels || [11, 20, 27])[i]} dBm)</option>`).join('')}</select></label>
+              ${c.hasLora === false ? '' : `<label>Transmit power<select id="comsLevel">${LEVEL_NAMES.map((l, i) => `<option value="${i}" ${i === c.level ? 'selected' : ''}>${l} (~${(c.levels || [11, 20, 27])[i]} dBm)</option>`).join('')}</select></label>`}
               <button class="coms-btn secondary" id="comsSave">Save</button>
               <button class="coms-btn secondary" id="comsClear">Clear log</button>
             </div>
@@ -197,8 +202,10 @@
           <form class="coms-compose" id="comsForm"><input id="comsInput" maxlength="180" placeholder="Message everyone on the mesh…" autocomplete="off"><button type="submit">Send</button></form>
           <div class="coms-count" id="comsCount"></div>
         ` : `<div class="coms-card coms-off">
-            <b>How it works:</b> every Heltec V3 and V4 running The Shelf has a 900 MHz LoRa radio. With Coms on, boards in range hear each other directly, and each board re-sends what it hears, so messages hop from board to board as far as the mesh reaches. A board that joins late is caught up on the last 12 hours by its neighbors. No internet or Wi-Fi needed between boards.<br><br>
-            Fit the LoRa antenna before switching it on. It uses its own channel (915.0 MHz), separate from Meshtastic.</div>`}
+            ${NOLORA ? `<b>How it works:</b> Shelf boards talk to each other directly over 2.4 GHz (ESP-NOW, the ESP32's own board-to-board radio frames), with no router in between. Phones can stay joined to a board's own Wi-Fi the whole time. Each board re-sends what it hears, so messages hop from board to board as far as the mesh reaches, and a board that joins late is caught up on the last 12 hours by its neighbors. Heltec V3 and V4 boards join in too and carry messages on to their 900 MHz mesh.<br><br>
+            Boards hear each other only on the same Wi-Fi channel. Boards on their own Wi-Fi all use channel 1; a board joined to a home Wi-Fi uses that router's channel. Range is about that of Wi-Fi: a house, or a few hundred feet in the open.`
+            : `<b>How it works:</b> every Heltec V3 and V4 running The Shelf has a 900 MHz LoRa radio, and every Shelf board (plain ESP32 boards too) also talks over 2.4 GHz. With Coms on, boards in range hear each other directly, and each board re-sends what it hears, on both, so messages hop from board to board as far as the mesh reaches. A board that joins late is caught up on the last 12 hours by its neighbors. No internet or Wi-Fi network needed between boards.<br><br>
+            Fit the LoRa antenna before switching it on. It uses its own channel (915.0 MHz), separate from Meshtastic. Over 2.4 GHz, boards hear each other only on the same Wi-Fi channel (channel 1 on their own Wi-Fi).`}</div>`}
       </div>`;
     const logEl = content.querySelector('#comsLog');
     if (logEl) logEl.scrollTop = logEl.scrollHeight;
@@ -291,11 +298,11 @@
       const s = R.st;
       let body;
       if (!R.session || !s) {
-        body = `<p class="rm-sub">Sends a signed request over 900 MHz${dev.hops ? `, through ${dev.hops} other ${dev.hops === 1 ? 'board' : 'boards'}` : ''}. Nothing is encrypted, so anyone listening on 915 MHz can read the commands and replies, but only someone with that board's admin password can give them.</p>
+        body = `<p class="rm-sub">Sends a signed request over ${NOLORA ? '2.4 GHz' : 'the mesh'}${dev.hops ? `, through ${dev.hops} other ${dev.hops === 1 ? 'board' : 'boards'}` : ''}. Nothing is encrypted, so anyone listening can read the commands and replies, but only someone with that board's admin password can give them.</p>
           ${R.busy ? '' : `<input type="password" class="rm-input" id="rmPw" placeholder="${nm}'s admin password" autocomplete="current-password">
           <div class="rm-row"><button type="button" class="coms-btn secondary" data-close>Cancel</button><button class="coms-btn" id="rmGo">Connect</button></div>`}`;
       } else {
-        const kv = [['Board', `V${escapeHtml(s.b)} · v${escapeHtml(s.fw)}`], ['Battery', s.bat < 0 ? 'On USB power' : s.bat + '%'], ['Up for', s.up != null ? up(s.up) : '—'],
+        const kv = [['Board', `${escapeHtml(boardLabel(s.b))} · v${escapeHtml(s.fw)}`], ['Battery', s.bat < 0 ? 'On USB power' : s.bat + '%'], ['Up for', s.up != null ? up(s.up) : '—'],
           ['Wi-Fi', escapeHtml(s.w || '—')], ['Address', escapeHtml(s.ip || '—') + (s.cl ? ` · ${s.cl} connected` : '')], ['Storage', `${s.st === 'SD' ? 'microSD' : 'Board flash'}` + (s.fm != null ? ` · ${fmtB(s.fm * 1e6)} free` : '')],
           ['Mode', s.ro ? '🔒 Read-only' : 'Anyone can make changes'], ['Screen', s.scr ? 'On' : 'Asleep'],
           ['On the mesh', `${escapeHtml(s.cm || dev.name || '')} · ${LEVEL_NAMES[s.lv]} (~${(s.b === '3' ? [11, 17, 22] : [11, 20, 27])[s.lv]} dBm)` + (s.mb != null ? ` · knows ${s.mb} ${s.mb === 1 ? 'board' : 'boards'}` : '')],
@@ -334,7 +341,7 @@
   }
 
   window.loadComsView = function () {
-    setToolHeader('900MHz Coms', 'A simple radio mesh between Shelf boards', null, null);
+    setToolHeader(BAND_NAME, 'A simple radio mesh between Shelf boards', null, null);
     last = '';
     refresh(true);
     clearInterval(timer);

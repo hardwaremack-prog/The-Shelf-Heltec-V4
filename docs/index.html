@@ -92,7 +92,7 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
         <span slot="unsupported" class="muted">Open this page in Chrome or Edge to install.</span>
         <span slot="not-allowed" class="muted">This page has to be opened over https.</span>
       </esp-web-install-button>
-      <small>An ESP32-WROOM dev board with 4 MB of flash (NodeMCU-32S, ESP32-DevKitC and the like). The whole Shelf, without 900MHz Coms (no radio). Starts its own Wi-Fi <b>TheShelf32c</b> (password <code>theshelf</code>) at <b>http://10.1.1.250</b>. Needs a microSD card. If the port doesn't connect, hold BOOT while you click Connect.</small>
+      <small>An ESP32-WROOM dev board with 4 MB of flash (NodeMCU-32S, ESP32-DevKitC and the like). The whole Shelf, with <b>2.4GHz Mesh Coms</b> in place of 900MHz (no LoRa radio). Starts its own Wi-Fi <b>TheShelf32c</b> (password <code>theshelf</code>) at <b>http://10.1.1.250</b>. Needs a microSD card. If the port doesn't connect, hold BOOT while you click Connect.</small>
     </div>
   </div>
   <p class="muted" style="margin-top:10px">Not sure which you have? Install the standard V4 one. The board's settings page shows how much PSRAM it found; if it lists none, reinstall with the R8 button.</p>
@@ -138,6 +138,7 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
 
   <h2>900MHz Coms</h2>
   <p>A <b>900MHz Coms</b> tab lets your boards text each other over the V4's LoRa radio, with no Wi-Fi or internet needed. Switch it on and you see the message log and can send to everyone. V3 and V4 boards share the same mesh. Every board with Coms on also relays for the others, with no hop limit, and a board that joins late is caught up on the last 12 hours by its neighbors. <b>Fit the LoRa antenna before switching it on.</b></p>
+  <p><b>2.4 GHz too.</b> Every board also sends and hears Coms over 2.4 GHz (ESP-NOW, the ESP32's own board-to-board frames), so plain ESP32 boards join the mesh through their <b>2.4GHz Mesh Coms</b> tab, and Heltec boards carry messages between the 2.4 GHz and 900 MHz boards. No router in between, and phones can stay joined to a board's own Wi-Fi. Boards hear each other over 2.4 GHz only on the same Wi-Fi channel: channel 1 on their own Wi-Fi, the router's channel on a home Wi-Fi. When a board meets one it hasn't heard for 20 minutes, it asks for the last 12 hours again, so messages travel with people carrying boards around.</p>
   <img class="shot" src="screenshots/coms-desktop.png" alt="900MHz Coms tab with the message log">
   <h2>Manage boards over 900MHz</h2>
   <p>The Coms tab lists every board on the mesh. Click one, type its admin password, and connect. You can check its battery, Wi-Fi and storage, turn read-only on or off, wake or sleep its screen, set its power, list its files, or restart it, all over the radio. Commands are signed with the board's password (never sent) rather than encrypted, as amateur rules require.</p>

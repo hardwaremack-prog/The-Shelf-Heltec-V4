@@ -81,6 +81,8 @@ Your shelves are normal folders at the top of the card: `Pictures`, `Music`, `MI
 
 A **900MHz Coms** tab in The Shelf's Tools lets Shelf boards (V4 and V3) text each other over their LoRa radios, with no Wi-Fi or internet between them.
 
+Every board also sends and hears the same packets over **2.4 GHz** (ESP-NOW broadcast frames, no router needed, phones can stay joined to a board's own Wi-Fi). Plain ESP32 boards mesh over 2.4 GHz only, through a **2.4GHz Mesh Coms** tab; Heltec boards send on both and relay between them, so it's one mesh. Over 2.4 GHz boards must share a Wi-Fi channel (channel 1 on their own Wi-Fi). Store and forward: besides asking for the last 12 hours when Coms comes on, a board asks again whenever it meets a board it hasn't heard for 20 minutes, so messages move with people carrying boards.
+
 ![900MHz Coms tab: on, with the message log, who's in range, and settings](docs/screenshots/coms-desktop.png)
 
 <p align="center"><img src="docs/screenshots/coms-phone.png" width="300" alt="900MHz Coms on an iPhone"></p>
@@ -220,7 +222,7 @@ From v1.9 the board has two firmware slots. On its settings page, **Update firmw
 The same Shelf runs on an ESP32-WROOM dev board with 4 MB of flash. Install it with **Install on ESP32** on the installer page (hold **BOOT** while connecting if the port won't open). What's different:
 
 - **Its own Wi-Fi, no setup.** It has no screen, so it starts straight on its own network: **TheShelf32c**, password `theshelf`, at **http://10.1.1.250** (phones get 10.1.1.100 and up). Joining a home Wi-Fi is optional, from its settings page. Holding BOOT 6 s puts it back on TheShelf32c with the default password.
-- **No 900MHz Coms** (no LoRa radio), and no Bluetooth: Wi-Fi and Bluetooth share one radio and too little memory on this chip, so Bluetooth is left off and its memory goes to the web server.
+- **2.4GHz Mesh Coms** instead of 900MHz Coms (no LoRa radio): the same mesh, catch-up and remote admin over ESP-NOW, and Heltec boards bridge it to 900 MHz. No Bluetooth: Wi-Fi and Bluetooth share one radio and too little memory on this chip, so Bluetooth is left off and its memory goes to the web server.
 - **It needs a microSD card.** The 4 MB of flash holds The Shelf (2.3 MB slot), a small update loader (`ShelfLoader/`, 384 KB) and the web app, with the top 64 KB left empty (on some boards the chip's last sector doesn't keep what the installer writes). An update over Wi-Fi saves the new firmware on the card; the board restarts into the loader, which installs it and starts The Shelf again.
 - **No screen or battery meter** unless you add an SSD1306 128×64 screen on GPIO 21 (SDA) / 22 (SCL), which it finds on its own. The BOOT button does what PRG does on a Heltec (hold 6 s: forget Wi-Fi; 12 s: clear the admin password).
 - Its name on the network is `shelf-esp32-xxxx.local`; the setup Wi-Fi is `The-Shelf-XXXX` as usual.
@@ -277,7 +279,7 @@ ShelfV4/
                    thumbnails, photo editor, zipped games, Range-capable file serving
   api_tools.cpp    Home board, Notes/Docs/Slides/Sheets, Draw, Visitors, weather, settings
   messaging.cpp    Shelf-to-Shelf discovery and chat
-  coms.cpp         900MHz Coms: LoRa mesh, catch-up, receipts, hellos, signed remote admin
+  coms.cpp         Coms: LoRa + 2.4 GHz (ESP-NOW) mesh, catch-up, receipts, hellos, signed remote admin
   admin.cpp        admin password, read-only mode, write-unlock cookies, signing keys
   music_meta.cpp   artist, title and cover art from ID3 tags
   util.cpp         JSON bodies (spooled to the card when big), streaming responses
