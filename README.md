@@ -246,6 +246,10 @@ Wiring it with the board upside down (pins pointing up)? The rows swap places:
 
 ![microSD plugged in line on an ESP32 with one jumper](docs/sd-wiring-shelf-esp32-inline.png)
 
+The same, with the module on the bottom side of the board (seen from underneath):
+
+![microSD plugged in line on the bottom side of an ESP32](docs/sd-wiring-shelf-esp32-inline-flipped.png)
+
 ## Backups
 
 - **The whole board, over USB.** On the [installer page](https://hardwaremack-prog.github.io/The-Shelf-Heltec-V4900mhzMesh/#backup), **Back up board** reads all of the board's flash (16 MB on a V4, 8 MB on a V3) into one `.bin.gz`: firmware, Wi-Fi, admin password, Coms history and any on-board files. **Restore from file** writes it back to the same board or a replacement of the same kind. Chrome or Edge on a computer.
