@@ -646,7 +646,9 @@ void comsBegin() {
     }
     rf.close();
   }
+#ifndef SHELF_NO_RADIO
   xTaskCreatePinnedToCore(comsTask, "coms", 8192, nullptr, 2, nullptr, 1);
+#endif
 }
 
 // ------------------------------------------------------------ HTTP

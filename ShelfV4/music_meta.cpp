@@ -101,9 +101,17 @@ static bool readId3(const String& path, String& artist, String& title, const Str
   return true;
 }
 
+static void musicMetaRun();
 void musicMetaLoop() {
   if (!dirty || millis() - dirtyAt < 4000) return;
+  // Short of memory (a plain ESP32 with Bluetooth on, say): try again later rather than crash.
+  if (ESP.getMaxAllocHeap() < 24 * 1024) { dirtyAt = millis() + 26000; return; }
   dirty = false;
+  try { musicMetaRun(); }
+  catch (...) { dirty = true; dirtyAt = millis() + 56000; }   // ran out part-way: back off a minute
+}
+
+static void musicMetaRun() {
   const char* META = DATA_ROOT "/music-meta.json";
   JsonDocument meta(&psAlloc);
   if (!loadJsonFile(META, meta) || !meta.is<JsonObject>()) meta.to<JsonObject>();

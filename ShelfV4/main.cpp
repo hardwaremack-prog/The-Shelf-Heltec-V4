@@ -482,9 +482,14 @@ class ShelfHandler : public AsyncWebHandler {
       sendWww(r, "/index.html", "text/html; charset=utf-8");
       return;
     }
+    try {
     if (serveContent(r, url)) return;
     bool done = handleOtaApi(r, url, m) || handleBtApi(r, url, m) || handleCardApi(r, url, m) || handleBoardApi(r, url, m) || handleComsApi(r, url, m) || handleMessagingApi(r, url, m) || handleFilesApi(r, url, m) || handleToolsApi(r, url, m);
     if (!done) sendErr(r, 404, "Not found");
+    } catch (...) {
+      // out of memory part-way through (a big list on a board without PSRAM): say so, keep running
+      sendErr(r, 503, "The board is short of memory right now. Try again in a moment.");
+    }
     cleanup(r);
   }
 
@@ -658,6 +663,11 @@ void loop() {
   static uint32_t lastStats = 0;
   if (statsDirty || now - lastStats > 60000) { refreshStats(); lastStats = now; }
   musicMetaLoop();
+  btTick();
+#if defined(SHELF_ESP32)
+  static uint32_t lastHeapLog = 0;                // for the serial log: how much room is left
+  if (now - lastHeapLog > 15000) { lastHeapLog = now; Serial.printf("[shelf] heap free %u, largest block %u, lowest %u\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap(), ESP.getMinFreeHeap()); }
+#endif
 
   if (screenOn && now - lastActivity > 300000 && !btnDown) { screenOn = false; oledPower(1); }
   static uint32_t lastDraw = 0;

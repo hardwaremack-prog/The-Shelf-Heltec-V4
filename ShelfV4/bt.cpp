@@ -42,7 +42,7 @@ static volatile bool connected = false;
 static bool stayOff = false;                            // "Disconnect": don't connect again until asked
 
 // ---- the sample ring: player task writes, Bluetooth reads (44.1 kHz stereo)
-static const uint32_t RING = 8192;                      // ~186 ms
+static const uint32_t RING = 4096;                      // ~93 ms
 static int16_t* ring = nullptr;                         // L,R pairs
 static volatile uint32_t rW = 0, rR = 0;
 static inline uint32_t ringUsed() { return rW - rR; }
@@ -192,11 +192,23 @@ void btBegin() {
   bprefs.begin("bt", false);
   btOn = bprefs.getBool("on", false);
   savedMac = bprefs.getString("mac", ""); savedName = bprefs.getString("name", "");
+  // Crash-loop guard: if the board keeps crashing (out of memory with Bluetooth on), start the
+  // next time with Bluetooth off, so the web page comes up and it can be dealt with there.
+  esp_reset_reason_t why = esp_reset_reason();
+  bool crashed = why == ESP_RST_PANIC || why == ESP_RST_INT_WDT || why == ESP_RST_TASK_WDT || why == ESP_RST_WDT;
+  int crashes = crashed ? bprefs.getInt("crash", 0) + 1 : 0;
+  bprefs.putInt("crash", crashes);
+  if (btOn && crashes >= 3) {
+    btOn = false; bprefs.putBool("on", false); bprefs.putInt("crash", 0);
+    btError = "Bluetooth was switched off because the board kept restarting with it on (not enough memory).";
+    Serial.println("[shelf] crashed 3 times in a row: Bluetooth switched off");
+  }
   volumePct = bprefs.getInt("vol", 70);
   if (!btOn) { esp_bt_controller_mem_release(ESP_BT_MODE_BTDM); return; }   // off: give its memory to the web server
   ring = (int16_t*)malloc(RING * 4);
   if (!ring) { btError = "Not enough memory for Bluetooth."; btOn = false; return; }
   a2dp.set_local_name(BT_NAME);
+  a2dp.set_reset_ble(true);                     // only Classic Bluetooth is used: hand Bluetooth LE's memory back
   a2dp.set_ssid_callback(onFound);
   a2dp.set_on_connection_state_changed(onState);
   a2dp.set_data_callback_in_frames(onFrames);
@@ -207,6 +219,12 @@ void btBegin() {
 }
 
 bool btActive() { return btRunning; }
+
+// a minute of running fine clears the crash count
+void btTick() {
+  static bool cleared = false;
+  if (!cleared && millis() > 60000) { cleared = true; if (bprefs.getInt("crash", 0)) bprefs.putInt("crash", 0); }
+}
 
 static String esc(const String& s) { return jsonEsc(s); }
 
@@ -290,6 +308,7 @@ bool handleBtApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m
 
 #else
 void btBegin() {}
+void btTick() {}
 bool btActive() { return false; }
 bool handleBtApi(AsyncWebServerRequest*, const String&, WebRequestMethod) { return false; }
 #endif
