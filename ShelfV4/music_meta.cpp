@@ -112,7 +112,28 @@ void musicMetaLoop() {
   catch (...) { dirty = true; dirtyAt = millis() + 56000; }   // ran out part-way: back off a minute
 }
 
+// Without PSRAM (a plain ESP32) there's no room for the whole song list and tag file at once, so
+// the scan only saves cover art, walking the folder a song at a time. (Artists aren't shown in the
+// list on those boards anyway; the song names carry them.)
+static void artOnlyScan() {
+  mkdirs(DATA_ROOT "/album-art");
+  std::vector<uint64_t> have = dirHashes(DATA_ROOT "/album-art");
+  forEachEntry("/Music", [&](const char* name, uint64_t, bool dir) {
+    if (dirty) return false;                                     // new uploads: start over later
+    if (musicReaders > 0 || ESP.getMaxAllocHeap() < 16 * 1024) { dirty = true; dirtyAt = millis() + 26000; return false; }
+    String n = name;
+    if (dir || extOf(n) != "mp3") return true;
+    String hex = fnvHex(String("Music/") + n);
+    if (hasHash(have, hex)) return true;
+    String artist, title;
+    readId3("/Music/" + n, artist, title, String(DATA_ROOT "/album-art/") + hex + ".jpg");
+    delay(2);
+    return true;
+  });
+}
+
 static void musicMetaRun() {
+  if (ESP.getPsramSize() == 0) { artOnlyScan(); return; }
   const char* META = DATA_ROOT "/music-meta.json";
   JsonDocument meta(&psAlloc);
   if (!loadJsonFile(META, meta) || !meta.is<JsonObject>()) meta.to<JsonObject>();

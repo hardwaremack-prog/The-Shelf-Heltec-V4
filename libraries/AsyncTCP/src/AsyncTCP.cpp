@@ -20,6 +20,8 @@
  */
 
 #include "Arduino.h"
+#include <new>
+#include "esp_heap_caps.h"
 
 #include "AsyncTCP.h"
 extern "C"{
@@ -385,6 +387,7 @@ static void _tcp_dns_found(const char * name, struct ip_addr * ipaddr, void * ar
 //Used to switch out from LwIP thread
 static int8_t _tcp_accept(void * arg, AsyncClient * client) {
     lwip_event_packet_t * e = (lwip_event_packet_t *)malloc(sizeof(lwip_event_packet_t));
+    if (!e) return ERR_OK;   // (rare: the free-block check in _accept comes first; deleting here would wait on this same lwIP thread)
     e->event = LWIP_TCP_ACCEPT;
     e->arg = arg;
     e->accept.client = client;
@@ -1548,10 +1551,20 @@ void AsyncServer::end(){
 }
 
 //runs on LwIP thread
+// The Shelf: on a board without PSRAM a burst of connections (a page asking for many pictures at
+// once) can use up memory, and an allocation that fails here or in the web server aborts the
+// board. With less than this much in one free block, a new connection is turned away instead;
+// the browser tries again.
+#define SHELF_MIN_FREE_BLOCK 10240
+
 int8_t AsyncServer::_accept(tcp_pcb* pcb, int8_t err){
     //ets_printf("+A: 0x%08x\n", pcb);
+    if(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) < SHELF_MIN_FREE_BLOCK){
+        tcp_abort(pcb);
+        return ERR_ABRT;
+    }
     if(_connect_cb){
-        AsyncClient *c = new AsyncClient(pcb);
+        AsyncClient *c = new (std::nothrow) AsyncClient(pcb);
         if(c){
             c->setNoDelay(_noDelay);
             return _tcp_accept(this, c);
@@ -1565,6 +1578,10 @@ int8_t AsyncServer::_accept(tcp_pcb* pcb, int8_t err){
 }
 
 int8_t AsyncServer::_accepted(AsyncClient* client){
+    if(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) < SHELF_MIN_FREE_BLOCK){   // still short: turn it away
+        delete client;
+        return ERR_OK;
+    }
     if(_connect_cb){
         _connect_cb(_connect_cb_arg, client);
     }

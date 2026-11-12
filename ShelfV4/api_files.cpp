@@ -75,8 +75,8 @@ struct Entry { String name; uint64_t size; uint64_t mt; };
 // ~100 KB for 238 songs in one block didn't fit there.
 struct ListState {
   String cat;
-  std::vector<Entry> v;
-  std::vector<String> haveArt, haveThumb;
+  std::vector<DirEnt> v;
+  std::vector<uint64_t> haveArt, haveThumb;
   JsonDocument plays{&psAlloc}, meta{&psAlloc};
   size_t i = 0;              // next entry to write
   String chunk; size_t pos = 0;
@@ -85,7 +85,7 @@ struct ListState {
   ~ListState() { if (reader) musicReaders--; }
 };
 
-static void entryJson(ListState& s, const Entry& e, String& o) {
+static void entryJson(ListState& s, const DirEnt& e, String& o) {
   const String& cat = s.cat;
   String url = "/shared/" + cat + "/";
   for (size_t i = 0; i < e.name.length(); i++) {
@@ -98,11 +98,11 @@ static void entryJson(ListState& s, const Entry& e, String& o) {
   out->printf("{\"name\":\"%s\",\"size\":%llu,\"sizeLabel\":\"%s\",\"modified\":%llu,\"added\":%llu,"
               "\"kind\":\"%s\",\"ext\":\"%s\",\"url\":\"%s\",\"plays\":%d",
               jsonEsc(e.name).c_str(), (unsigned long long)e.size, humanSize(e.size).c_str(),
-              (unsigned long long)e.mt, (unsigned long long)e.mt, fileKind(e.name).c_str(), jsonEsc(extOf(e.name)).c_str(),
+              (unsigned long long)e.mtimeMs, (unsigned long long)e.mtimeMs, fileKind(e.name).c_str(), jsonEsc(extOf(e.name)).c_str(),
               jsonEsc(url).c_str(), pc);
   if (cat == "Music") {
     String art = thumbPath("album-art", cat, e.name);
-    if (hasName(s.haveArt, art.substring(art.lastIndexOf('/') + 1))) out->printf(",\"artUrl\":\"/data-files/album-art/%s?v=%llu\"", art.substring(art.lastIndexOf('/') + 1).c_str(), (unsigned long long)e.mt);
+    if (hasHash(s.haveArt, art.substring(art.lastIndexOf('/') + 1))) out->printf(",\"artUrl\":\"/data-files/album-art/%s?v=%llu\"", art.substring(art.lastIndexOf('/') + 1).c_str(), (unsigned long long)e.mtimeMs);
     else out->print(",\"artUrl\":null");
     const char* a = s.meta[e.name]["a"] | (const char*)nullptr;
     if (a && *a) out->printf(",\"artist\":\"%s\"", jsonEsc(a).c_str()); else out->print(",\"artist\":null");
@@ -110,7 +110,7 @@ static void entryJson(ListState& s, const Entry& e, String& o) {
   if (cat == "Videos" || thumbable(cat)) {
     const char* kind = cat == "Videos" ? "video-thumbs" : "file-thumbs";
     String t = thumbPath(kind, cat, e.name);
-    if (hasName(s.haveThumb, t.substring(t.lastIndexOf('/') + 1))) out->printf(",\"thumbUrl\":\"/data-files/%s/%s?v=%llu\"", kind, t.substring(t.lastIndexOf('/') + 1).c_str(), (unsigned long long)nowMs() / 60000);
+    if (hasHash(s.haveThumb, t.substring(t.lastIndexOf('/') + 1))) out->printf(",\"thumbUrl\":\"/data-files/%s/%s?v=%llu\"", kind, t.substring(t.lastIndexOf('/') + 1).c_str(), (unsigned long long)nowMs() / 60000);
     else out->print(",\"thumbUrl\":null");
   }
   out->print("}");
@@ -141,16 +141,13 @@ static void listFiles(AsyncWebServerRequest* r, const String& cat) {
   auto s = std::make_shared<ListState>();
   s->cat = cat;
   if (cat == "Music") { musicReaders++; s->reader = true; }   // the background scan waits
-  {
-    std::vector<DirEnt> all; listDir(catDir(cat), all);
-    s->v.reserve(all.size());
-    for (auto& e : all) if (!e.dir && !e.name.startsWith(".")) s->v.push_back({e.name, e.size, e.mtimeMs});
-  }
+  listDir(catDir(cat), s->v);
+  s->v.erase(std::remove_if(s->v.begin(), s->v.end(), [](const DirEnt& e) { return e.dir || e.name.startsWith("."); }), s->v.end());
   // which songs/videos/games already have art or a thumbnail: one look at each folder
-  if (cat == "Music") s->haveArt = dirNames(DATA_ROOT "/album-art");
-  if (cat == "Videos") s->haveThumb = dirNames(DATA_ROOT "/video-thumbs");
-  else if (thumbable(cat)) s->haveThumb = dirNames(DATA_ROOT "/file-thumbs");
-  std::sort(s->v.begin(), s->v.end(), [](const Entry& a, const Entry& b) { return a.mt > b.mt; });
+  if (cat == "Music") s->haveArt = dirHashes(DATA_ROOT "/album-art");
+  if (cat == "Videos") s->haveThumb = dirHashes(DATA_ROOT "/video-thumbs");
+  else if (thumbable(cat)) s->haveThumb = dirHashes(DATA_ROOT "/file-thumbs");
+  std::sort(s->v.begin(), s->v.end(), [](const DirEnt& a, const DirEnt& b) { return a.mtimeMs > b.mtimeMs; });
   loadJsonFile(PLAYS_FILE, s->plays);
   // Artists from the songs' tags. Without PSRAM (a plain ESP32) the whole file doesn't fit next to
   // everything else, so the list goes without them there (most songs are named "Artist - Title").

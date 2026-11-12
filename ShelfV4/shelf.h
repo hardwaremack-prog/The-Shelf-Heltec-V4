@@ -6,6 +6,7 @@
 #include <ESPAsyncWebServer.h>
 #include <vector>
 #include "board.h"
+#include <functional>
 
 // ---------------------------------------------------------------- storage
 extern fs::FS* store;          // microSD card, or the board's own flash
@@ -43,6 +44,9 @@ struct DirEnt { String name; uint64_t size; uint64_t mtimeMs; bool dir; };
 bool listDir(const String& path, std::vector<DirEnt>& out, size_t max = 20000);
 // Just the names in a folder, sorted, for quick "does this thumbnail exist" checks.
 std::vector<String> dirNames(const String& path);
+std::vector<uint64_t> dirHashes(const String& path);          // art/thumbnail folders, as numbers
+void forEachEntry(const String& path, const std::function<bool(const char*, uint64_t, bool)>& fn);
+bool hasHash(const std::vector<uint64_t>& h, const String& hex16);
 bool hasName(const std::vector<String>& sortedNames, const String& name);
 const char* mimeFor(const String& path);
 

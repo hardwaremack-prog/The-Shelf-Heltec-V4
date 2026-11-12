@@ -546,6 +546,12 @@ bool listDir(const String& path, std::vector<DirEnt>& out, size_t max) {
   FILINFO* fi = (FILINFO*)malloc(sizeof(FILINFO));
   bool ok = d && fi && f_opendir(d, fp.c_str()) == FR_OK;
   if (ok) {
+    // count first, then make room once: growing the list as it goes needs two copies at once,
+    // and a board without PSRAM may not have one block that big
+    size_t n = 0;
+    while (n < max && f_readdir(d, fi) == FR_OK && fi->fname[0]) n++;
+    f_rewinddir(d);
+    out.reserve(out.size() + n);
     while (out.size() < max) {
       if (f_readdir(d, fi) != FR_OK || !fi->fname[0]) break;
       if (fi->fname[0] == '.' && (!fi->fname[1] || (fi->fname[1] == '.' && !fi->fname[2]))) continue;
@@ -556,6 +562,22 @@ bool listDir(const String& path, std::vector<DirEnt>& out, size_t max) {
   free(d); free(fi);
   return ok;
 }
+// Calls fn for each entry (name, size, is-folder) one at a time, holding nothing else in memory.
+// fn returns false to stop early.
+void forEachEntry(const String& path, const std::function<bool(const char*, uint64_t, bool)>& fn) {
+  if (!fatDrive[0] && !findDrive()) return;
+  String fp = String(fatDrive) + (path.startsWith("/") ? path : "/" + path);
+  FF_DIR* d = (FF_DIR*)malloc(sizeof(FF_DIR));
+  FILINFO* fi = (FILINFO*)malloc(sizeof(FILINFO));
+  if (d && fi && f_opendir(d, fp.c_str()) == FR_OK) {
+    while (f_readdir(d, fi) == FR_OK && fi->fname[0]) {
+      if (fi->fname[0] == '.') continue;
+      if (!fn(fi->fname, (uint64_t)fi->fsize, (fi->fattrib & AM_DIR) != 0)) break;
+    }
+    f_closedir(d);
+  }
+  free(d); free(fi);
+}
 std::vector<String> dirNames(const String& path) {
   std::vector<DirEnt> v; listDir(path, v);
   std::vector<String> n; n.reserve(v.size());
@@ -564,6 +586,16 @@ std::vector<String> dirNames(const String& path) {
   return n;
 }
 bool hasName(const std::vector<String>& n, const String& name) { return std::binary_search(n.begin(), n.end(), name); }
+// Art and thumbnail files are named <16 hex digits>.jpg: keep just the numbers (8 bytes each)
+std::vector<uint64_t> dirHashes(const String& path) {
+  std::vector<DirEnt> v; listDir(path, v);
+  std::vector<uint64_t> h; h.reserve(v.size());
+  for (auto& e : v) if (!e.dir && e.name.length() >= 16) h.push_back(strtoull(e.name.substring(0, 16).c_str(), nullptr, 16));
+  std::vector<DirEnt>().swap(v);
+  std::sort(h.begin(), h.end());
+  return h;
+}
+bool hasHash(const std::vector<uint64_t>& h, const String& hex16) { return std::binary_search(h.begin(), h.end(), (uint64_t)strtoull(hex16.c_str(), nullptr, 16)); }
 
 // ------------------------------------------------------------ careful block writes
 volatile uint32_t sdRetries = 0, sdFailures = 0;

@@ -1,6 +1,6 @@
 {
   "name": "The Shelf for Heltec V4-R8",
-  "version": "1.9.7",
+  "version": "1.9.8",
   "new_install_prompt_erase": true,
   "builds": [
     {
