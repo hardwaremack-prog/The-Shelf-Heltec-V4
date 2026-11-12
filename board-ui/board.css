@@ -12,7 +12,7 @@
 }
 .board-badge:hover { background: var(--surface-hover); }
 .board-badge b { color: var(--accent); }
-.board-badge .chip { width: 26px; height: 26px; border-radius: 7px; flex: none; display: grid; place-items: center;
+.board-badge .chip { min-width: 26px; padding: 0 6px; box-sizing: border-box; height: 26px; white-space: nowrap; border-radius: 7px; flex: none; display: grid; place-items: center;
   background: #2b4a7a; color: #dfe8f7; font-weight: 700; font-size: 11px; }
 .board-badge small { color: var(--text-muted); display: block; }
 

@@ -17,6 +17,10 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 SHELF="${SHELF:-build/the-shelf}"
+# the clone is refreshed every build, so boards always get the newest Shelf page
+if [ "$SHELF" = build/the-shelf ] && [ -d build/the-shelf/.git ]; then
+  git -C build/the-shelf fetch -q --depth 1 origin && git -C build/the-shelf reset -q --hard FETCH_HEAD || echo "(couldn't refresh build/the-shelf; using what's there)"
+fi
 if [ ! -f "$SHELF/public/app.js" ]; then
   rm -rf build/the-shelf
   git clone --depth 1 https://github.com/hardwaremack-prog/the-shelf.git build/the-shelf

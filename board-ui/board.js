@@ -607,11 +607,11 @@
           const m = await decode(buf.slice(start, walked).buffer);            // from the start of the song, every time
           if (!live()) return;
           st.data = m; st.rate = PCM_VIZ_RATE; st.ready = true;
-          next = Math.max(next * GROW, ready + FIRST);
-        } catch (e) { if (++failed > 2) return; next = ready + FIRST; }       // try again with a bit more
+          next = Math.min(Math.max(next * GROW, ready + FIRST), ready + 1536 * 1024);   // fresh bars at least every 1.5 MB
+        } catch (e) { failed++; next = ready + FIRST; }                      // Safari balked: try again with a bit more
         if (last) {
           // the whole song is in: one last pass if frames ended early (a glitch or a tag mid-file)
-          if (walked < have - 256 && !failed) { const more = firstFrame(buf.subarray(0, have), walked); if (more > 0) { st.data = await decode(buf.slice(start, have).buffer).catch(() => st.data); } }
+          if (walked < have - 256) { const more = firstFrame(buf.subarray(0, have), walked); if (more > 0) { st.data = await decode(buf.slice(start, have).buffer).catch(() => st.data); } }
           return;
         }
       }
