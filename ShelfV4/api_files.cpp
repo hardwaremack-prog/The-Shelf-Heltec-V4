@@ -70,61 +70,90 @@ static void migrateExtras(const String& fc, const String& fn, const String& tc, 
 // ------------------------------------------------------------ listing
 struct Entry { String name; uint64_t size; uint64_t mt; };
 
-static void listFiles(AsyncWebServerRequest* r, const String& cat) {
+// The list is sent a piece at a time (one file's entry, then the next), so even a big shelf
+// never needs the whole answer in memory at once: a plain ESP32 has no PSRAM, and building
+// ~100 KB for 238 songs in one block didn't fit there.
+struct ListState {
+  String cat;
   std::vector<Entry> v;
+  std::vector<String> haveArt, haveThumb;
+  JsonDocument plays{&psAlloc}, meta{&psAlloc};
+  size_t i = 0;              // next entry to write
+  String chunk; size_t pos = 0;
+  bool opened = false, closed = false;
+};
+
+static void entryJson(ListState& s, const Entry& e, String& o) {
+  const String& cat = s.cat;
+  String url = "/shared/" + cat + "/";
+  for (size_t i = 0; i < e.name.length(); i++) {
+    uint8_t c = e.name[i];
+    if (isalnum(c) || strchr("-_.!~*'()", c)) url += (char)c;
+    else { char b[4]; snprintf(b, sizeof b, "%%%02X", c); url += b; }
+  }
+  StrOut so(o); StrOut* out = &so;
+  int pc = s.plays[cat + "/" + e.name] | 0;
+  out->printf("{\"name\":\"%s\",\"size\":%llu,\"sizeLabel\":\"%s\",\"modified\":%llu,\"added\":%llu,"
+              "\"kind\":\"%s\",\"ext\":\"%s\",\"url\":\"%s\",\"plays\":%d",
+              jsonEsc(e.name).c_str(), (unsigned long long)e.size, humanSize(e.size).c_str(),
+              (unsigned long long)e.mt, (unsigned long long)e.mt, fileKind(e.name).c_str(), jsonEsc(extOf(e.name)).c_str(),
+              jsonEsc(url).c_str(), pc);
+  if (cat == "Music") {
+    String art = thumbPath("album-art", cat, e.name);
+    if (hasName(s.haveArt, art.substring(art.lastIndexOf('/') + 1))) out->printf(",\"artUrl\":\"/data-files/album-art/%s?v=%llu\"", art.substring(art.lastIndexOf('/') + 1).c_str(), (unsigned long long)e.mt);
+    else out->print(",\"artUrl\":null");
+    const char* a = s.meta[e.name]["a"] | (const char*)nullptr;
+    if (a && *a) out->printf(",\"artist\":\"%s\"", jsonEsc(a).c_str()); else out->print(",\"artist\":null");
+  }
+  if (cat == "Videos" || thumbable(cat)) {
+    const char* kind = cat == "Videos" ? "video-thumbs" : "file-thumbs";
+    String t = thumbPath(kind, cat, e.name);
+    if (hasName(s.haveThumb, t.substring(t.lastIndexOf('/') + 1))) out->printf(",\"thumbUrl\":\"/data-files/%s/%s?v=%llu\"", kind, t.substring(t.lastIndexOf('/') + 1).c_str(), (unsigned long long)nowMs() / 60000);
+    else out->print(",\"thumbUrl\":null");
+  }
+  out->print("}");
+}
+
+// fills the network's buffer from the list, writing entries as they're needed
+static size_t fillList(ListState& s, uint8_t* buf, size_t maxLen) {
+  size_t n = 0;
+  while (n < maxLen) {
+    if (s.pos < s.chunk.length()) {
+      size_t k = std::min(maxLen - n, (size_t)(s.chunk.length() - s.pos));
+      memcpy(buf + n, s.chunk.c_str() + s.pos, k); s.pos += k; n += k; continue;
+    }
+    s.chunk = ""; s.pos = 0;
+    if (!s.opened) { s.opened = true; s.chunk = "["; continue; }
+    if (s.i < s.v.size()) {
+      if (s.i) s.chunk = ",";
+      try { entryJson(s, s.v[s.i], s.chunk); } catch (...) { s.chunk = s.i ? "," : ""; s.chunk += "{\"name\":\"\"}"; }
+      s.i++; continue;
+    }
+    if (!s.closed) { s.closed = true; s.chunk = "]"; continue; }
+    break;
+  }
+  return n;
+}
+
+static void listFiles(AsyncWebServerRequest* r, const String& cat) {
+  auto s = std::make_shared<ListState>();
+  s->cat = cat;
   {
     std::vector<DirEnt> all; listDir(catDir(cat), all);
-    for (auto& e : all) if (!e.dir && !e.name.startsWith(".")) v.push_back({e.name, e.size, e.mtimeMs});
+    s->v.reserve(all.size());
+    for (auto& e : all) if (!e.dir && !e.name.startsWith(".")) s->v.push_back({e.name, e.size, e.mtimeMs});
   }
   // which songs/videos/games already have art or a thumbnail: one look at each folder
-  std::vector<String> haveArt, haveThumb;
-  if (cat == "Music") haveArt = dirNames(DATA_ROOT "/album-art");
-  if (cat == "Videos") haveThumb = dirNames(DATA_ROOT "/video-thumbs");
-  else if (thumbable(cat)) haveThumb = dirNames(DATA_ROOT "/file-thumbs");
-  std::sort(v.begin(), v.end(), [](const Entry& a, const Entry& b) { return a.mt > b.mt; });
-
-  JsonDocument plays(&psAlloc);
-  loadJsonFile(PLAYS_FILE, plays);
-  JsonDocument meta(&psAlloc);
-  if (cat == "Music") loadJsonFile(META_FILE, meta);
-
-  String body; body.reserve(v.size() * 420 + 16);
-  StrOut so(body); StrOut* out = &so;
-  out->print("[");
-  bool first = true;
-  for (auto& e : v) {
-    String enc = e.name; // URL-encode for the url field
-    String url = "/shared/" + cat + "/";
-    for (size_t i = 0; i < enc.length(); i++) {
-      uint8_t c = enc[i];
-      if (isalnum(c) || strchr("-_.!~*'()", c)) url += (char)c;
-      else { char b[4]; snprintf(b, sizeof b, "%%%02X", c); url += b; }
-    }
-    String key = cat + "/" + e.name;
-    int pc = plays[key] | 0;
-    out->printf("%s{\"name\":\"%s\",\"size\":%llu,\"sizeLabel\":\"%s\",\"modified\":%llu,\"added\":%llu,"
-                "\"kind\":\"%s\",\"ext\":\"%s\",\"url\":\"%s\",\"plays\":%d",
-                first ? "" : ",", jsonEsc(e.name).c_str(), (unsigned long long)e.size, humanSize(e.size).c_str(),
-                (unsigned long long)e.mt, (unsigned long long)e.mt, fileKind(e.name).c_str(), jsonEsc(extOf(e.name)).c_str(),
-                jsonEsc(url).c_str(), pc);
-    if (cat == "Music") {
-      String art = thumbPath("album-art", cat, e.name);
-      if (hasName(haveArt, art.substring(art.lastIndexOf('/') + 1))) out->printf(",\"artUrl\":\"/data-files/album-art/%s?v=%llu\"", art.substring(art.lastIndexOf('/') + 1).c_str(), (unsigned long long)e.mt);
-      else out->print(",\"artUrl\":null");
-      const char* a = meta[e.name]["a"] | (const char*)nullptr;
-      if (a && *a) out->printf(",\"artist\":\"%s\"", jsonEsc(a).c_str()); else out->print(",\"artist\":null");
-    }
-    if (cat == "Videos" || thumbable(cat)) {
-      const char* kind = cat == "Videos" ? "video-thumbs" : "file-thumbs";
-      String t = thumbPath(kind, cat, e.name);
-      if (hasName(haveThumb, t.substring(t.lastIndexOf('/') + 1))) out->printf(",\"thumbUrl\":\"/data-files/%s/%s?v=%llu\"", kind, t.substring(t.lastIndexOf('/') + 1).c_str(), (unsigned long long)nowMs() / 60000);
-      else out->print(",\"thumbUrl\":null");
-    }
-    out->print("}");
-    first = false;
-  }
-  out->print("]");
-  sendBody(r, 200, "application/json", std::move(body));
+  if (cat == "Music") s->haveArt = dirNames(DATA_ROOT "/album-art");
+  if (cat == "Videos") s->haveThumb = dirNames(DATA_ROOT "/video-thumbs");
+  else if (thumbable(cat)) s->haveThumb = dirNames(DATA_ROOT "/file-thumbs");
+  std::sort(s->v.begin(), s->v.end(), [](const Entry& a, const Entry& b) { return a.mt > b.mt; });
+  loadJsonFile(PLAYS_FILE, s->plays);
+  if (cat == "Music") loadJsonFile(META_FILE, s->meta);
+  AsyncWebServerResponse* res = r->beginChunkedResponse("application/json",
+    [s](uint8_t* buf, size_t maxLen, size_t) -> size_t { return fillList(*s, buf, maxLen); });
+  res->addHeader("Cache-Control", "no-store");
+  r->send(res);
 }
 
 // ------------------------------------------------------------ uploads (multipart)
