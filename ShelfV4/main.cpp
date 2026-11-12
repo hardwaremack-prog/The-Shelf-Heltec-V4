@@ -544,6 +544,7 @@ static void handleButton() {
       prefs.remove("ssid"); prefs.remove("pass"); prefs.remove("mode");
 #if defined(SHELF_ESP32)
       prefs.remove("apssid"); prefs.remove("appass");   // no screen: back to TheShelf32c / theshelf, so you can always get in
+      { Preferences b; b.begin("bt", false); b.putBool("on", false); b.end(); }   // and Bluetooth off
 #endif
       delay(1200); ESP.restart();
     }
@@ -623,7 +624,6 @@ void setup() {
   if (!LittleFS.begin(false, "/www", 10, "www")) oledMsg("Web app missing", "Re-flash from the", "installer page");
   setupStorage();
   refreshStats();
-  btBegin();                  // plain ESP32 only: Bluetooth headsets (bt.cpp)
 
   WiFi.persistent(false);
   WiFi.setHostname(hostName.c_str());
@@ -641,6 +641,9 @@ void setup() {
 
   setupServer(server80);
   setupServer(server8080);
+  // Bluetooth comes up last (plain ESP32 only, bt.cpp): Wi-Fi and the web page get their memory
+  // first, so the board can always be reached to switch Bluetooth off again.
+  btBegin();
   messagingBegin();
   comsBegin();
   markMusicDirty();

@@ -5,6 +5,7 @@
 #include <sys/time.h>
 #include "ff.h"
 #include <algorithm>
+#include <memory>
 
 const char* const CATEGORIES[NUM_CATEGORIES] = {"Pictures", "Music", "MIDI", "Videos", "Games", "Programs", "Books"};
 bool isCategory(const String& c) { for (auto x : CATEGORIES) if (c == x) return true; return false; }
@@ -426,6 +427,26 @@ void sendJsonFile(AsyncWebServerRequest* r, const String& path) {
   r->send(res);
 }
 
+// Videos and songs are sent in byte ranges, and a video player often asks for several at once
+// (the start, the end, then the rest). On a board without PSRAM (a plain ESP32) every open stream
+// holds several KB of network buffers, and a handful together use up the memory Wi-Fi itself needs,
+// which freezes the whole board. So big files are limited to a couple of streams at a time: a
+// newer request takes over from the oldest (the player has moved on from it by then), and pieces
+// get smaller when memory runs short.
+volatile int streamsActive = 0;
+struct StreamGuard;
+static std::vector<StreamGuard*> streams;
+struct StreamGuard {
+  AsyncClient* client;
+  explicit StreamGuard(AsyncClient* c) : client(c) { streams.push_back(this); streamsActive = streams.size(); }
+  ~StreamGuard() {
+    auto it = std::find(streams.begin(), streams.end(), this);
+    if (it != streams.end()) streams.erase(it);
+    streamsActive = streams.size();
+  }
+};
+static bool lowMem() { return ESP.getPsramSize() == 0; }
+
 void sendFileRanged(AsyncWebServerRequest* r, const String& p, bool download) {
   File f = store->open(p, FILE_READ);
   if (!f || f.isDirectory()) { if (f) f.close(); r->send(404, "text/plain", "Not found"); return; }
@@ -452,11 +473,27 @@ void sendFileRanged(AsyncWebServerRequest* r, const String& p, bool download) {
     }
   }
   size_t len = size ? end - start + 1 : 0;
+  std::shared_ptr<StreamGuard> guard;
+  bool small = lowMem();
+  if (small && len > 256 * 1024) {
+    const size_t MAX_STREAMS = 2;
+    while (streams.size() >= MAX_STREAMS) {             // the oldest stream gives way
+      StreamGuard* old = streams.front();
+      streams.erase(streams.begin());
+      streamsActive = streams.size();
+      if (old->client) old->client->close(true);
+    }
+    guard = std::make_shared<StreamGuard>(r->client());
+  }
   File fh = f; size_t base = start;
   AsyncWebServerResponse* res = r->beginResponse(mimeFor(p), len,
-    [fh, base, len](uint8_t* buf, size_t maxLen, size_t index) mutable -> size_t {
+    [fh, base, len, guard, small](uint8_t* buf, size_t maxLen, size_t index) mutable -> size_t {
       if (index >= len) return 0;
       size_t want = std::min(maxLen, len - index);
+      if (small) {                                        // keep what's in flight modest
+        size_t cap = ESP.getMaxAllocHeap() < 20 * 1024 ? 1436 : 2872;
+        if (want > cap) want = cap;
+      }
       if (fh.position() != base + index) fh.seek(base + index);
       int got = fh.read(buf, want);
       return got > 0 ? (size_t)got : 0;

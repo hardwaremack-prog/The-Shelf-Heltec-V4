@@ -106,7 +106,7 @@ static void musicMetaRun();
 void musicMetaLoop() {
   if (!dirty || millis() - dirtyAt < 4000) return;
   // Short of memory (a plain ESP32 with Bluetooth on, say): try again later rather than crash.
-  if (ESP.getMaxAllocHeap() < 24 * 1024 || musicReaders > 0) { dirtyAt = millis() + 26000; return; }
+  if (ESP.getMaxAllocHeap() < 24 * 1024 || musicReaders > 0 || (streamsActive > 0 && ESP.getPsramSize() == 0)) { dirtyAt = millis() + 26000; return; }
   dirty = false;
   try { musicMetaRun(); }
   catch (...) { dirty = true; dirtyAt = millis() + 56000; }   // ran out part-way: back off a minute
@@ -120,7 +120,7 @@ static void artOnlyScan() {
   std::vector<uint64_t> have = dirHashes(DATA_ROOT "/album-art");
   forEachEntry("/Music", [&](const char* name, uint64_t, bool dir) {
     if (dirty) return false;                                     // new uploads: start over later
-    if (musicReaders > 0 || ESP.getMaxAllocHeap() < 16 * 1024) { dirty = true; dirtyAt = millis() + 26000; return false; }
+    if (musicReaders > 0 || streamsActive > 0 || ESP.getMaxAllocHeap() < 16 * 1024) { dirty = true; dirtyAt = millis() + 26000; return false; }
     String n = name;
     if (dir || extOf(n) != "mp3") return true;
     String hex = fnvHex(String("Music/") + n);

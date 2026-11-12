@@ -194,17 +194,26 @@ void btBegin() {
   savedMac = bprefs.getString("mac", ""); savedName = bprefs.getString("name", "");
   // Crash-loop guard: if the board keeps crashing (out of memory with Bluetooth on), start the
   // next time with Bluetooth off, so the web page comes up and it can be dealt with there.
+  // A start with Bluetooth on that didn't then run a full minute counts as a strike, whatever
+  // restarted it (a crash, or someone unplugging a board that had stopped answering).
   esp_reset_reason_t why = esp_reset_reason();
   bool crashed = why == ESP_RST_PANIC || why == ESP_RST_INT_WDT || why == ESP_RST_TASK_WDT || why == ESP_RST_WDT;
-  int crashes = crashed ? bprefs.getInt("crash", 0) + 1 : 0;
+  bool unfinished = bprefs.getBool("pending", false);
+  int crashes = (crashed || unfinished) ? bprefs.getInt("crash", 0) + 1 : 0;
   bprefs.putInt("crash", crashes);
-  if (btOn && crashes >= 3) {
+  if (btOn && crashes >= 2) {
     btOn = false; bprefs.putBool("on", false); bprefs.putInt("crash", 0);
     btError = "Bluetooth was switched off because the board kept restarting with it on (not enough memory).";
-    Serial.println("[shelf] crashed 3 times in a row: Bluetooth switched off");
+    Serial.println("[shelf] restarted twice with Bluetooth on: Bluetooth switched off");
   }
   volumePct = bprefs.getInt("vol", 70);
-  if (!btOn) { esp_bt_controller_mem_release(ESP_BT_MODE_BTDM); return; }   // off: give its memory to the web server
+  if (btOn && ESP.getFreeHeap() < 60 * 1024) {     // Wi-Fi and the web page come first
+    Serial.printf("[shelf] only %u bytes free: not starting Bluetooth\n", ESP.getFreeHeap());
+    btOn = false; bprefs.putBool("on", false);
+    btError = "Bluetooth was switched off: not enough memory left with Wi-Fi running.";
+  }
+  if (!btOn) { bprefs.putBool("pending", false); esp_bt_controller_mem_release(ESP_BT_MODE_BTDM); return; }   // off: give its memory to the web server
+  bprefs.putBool("pending", true);
   ring = (int16_t*)malloc(RING * 4);
   if (!ring) { btError = "Not enough memory for Bluetooth."; btOn = false; return; }
   a2dp.set_local_name(BT_NAME);
@@ -223,7 +232,11 @@ bool btActive() { return btRunning; }
 // a minute of running fine clears the crash count
 void btTick() {
   static bool cleared = false;
-  if (!cleared && millis() > 60000) { cleared = true; if (bprefs.getInt("crash", 0)) bprefs.putInt("crash", 0); }
+  if (!cleared && millis() > 60000) {
+    cleared = true;
+    if (bprefs.getInt("crash", 0)) bprefs.putInt("crash", 0);
+    if (bprefs.getBool("pending", false)) bprefs.putBool("pending", false);
+  }
 }
 
 static String esc(const String& s) { return jsonEsc(s); }
