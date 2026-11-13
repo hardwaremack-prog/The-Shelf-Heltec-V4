@@ -250,6 +250,8 @@ The same, with the module on the bottom side of the board (seen from underneath)
 
 ![microSD plugged in line on the bottom side of an ESP32](docs/sd-wiring-shelf-esp32-inline-flipped.png)
 
+**Copying a card to another card (Windows):** [SD Card Imager](docs/SD-Card-Imager.zip) (source in `tools/sd-card-imager/`) saves a whole card to one compressed `.img.gz` and writes an image back onto a card. Unzip it and double-click *SD Card Imager.cmd*; it asks for admin rights, which Windows needs for reading or writing a whole card. Only SD cards and USB drives are listed.
+
 ## Backups
 
 - **The whole board, over USB.** On the [installer page](https://hardwaremack-prog.github.io/The-Shelf-Heltec-V4900mhzMesh/#backup), **Back up board** reads all of the board's flash (16 MB on a V4, 8 MB on a V3) into one `.bin.gz`: firmware, Wi-Fi, admin password, Coms history and any on-board files. **Restore from file** writes it back to the same board or a replacement of the same kind. Chrome or Edge on a computer.
