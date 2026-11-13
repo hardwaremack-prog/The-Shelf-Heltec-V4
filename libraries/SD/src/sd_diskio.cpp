@@ -632,8 +632,12 @@ DSTATUS ff_sd_status(uint8_t pdrv)
     return s_cards[pdrv]->status;
 }
 
+// The Shelf: when the card was last read or written (for an activity light). millis().
+extern "C" { volatile uint32_t sdActivityMs = 0; }
+
 DRESULT ff_sd_read(uint8_t pdrv, uint8_t* buffer, DWORD sector, UINT count)
 {
+    sdActivityMs = millis();
     ardu_sdcard_t * card = s_cards[pdrv];
     if (card->status & STA_NOINIT) {
         return RES_NOTRDY;
@@ -652,6 +656,7 @@ DRESULT ff_sd_read(uint8_t pdrv, uint8_t* buffer, DWORD sector, UINT count)
 
 DRESULT ff_sd_write(uint8_t pdrv, const uint8_t* buffer, DWORD sector, UINT count)
 {
+    sdActivityMs = millis();
     ardu_sdcard_t * card = s_cards[pdrv];
     if (card->status & STA_NOINIT) {
         return RES_NOTRDY;

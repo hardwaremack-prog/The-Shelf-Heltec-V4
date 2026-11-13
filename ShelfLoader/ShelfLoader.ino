@@ -14,10 +14,17 @@
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 
+void startShelf();   // (declared here: the sketch tool's own guess at these lines comes out wrong)
+void setup();
+void loop();
+
 #define SD_CS    5
 #define SD_MOSI  23
 #define SD_SCK   18
 #define SD_MISO  19
+#define SD_MOSI_INLINE 5    // in-line wiring: the module plugged onto GND, 19, 18, 5, 17
+#define SD_CS_INLINE   17
+#define LED_PIN 2           // the blue LED: fast flash while installing
 #define UPDATE_FILE "/.shelf/update-app.bin"
 
 static SPIClass sdSPI(VSPI);
@@ -33,9 +40,18 @@ void startShelf() {
 void setup() {
   Serial.begin(115200);
   Serial.println("\nThe Shelf update loader");
+  pinMode(LED_PIN, OUTPUT); digitalWrite(LED_PIN, HIGH);
   sdSPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
   for (int pin : {SD_MISO, SD_MOSI, SD_CS}) gpio_pullup_en((gpio_num_t)pin);
-  if (!SD.begin(SD_CS, sdSPI, 10000000) && !SD.begin(SD_CS, sdSPI, 4000000)) { Serial.println("loader: no card"); startShelf(); }
+  pinMode(SD_CS_INLINE, INPUT_PULLUP);
+  bool card = SD.begin(SD_CS, sdSPI, 10000000) || SD.begin(SD_CS, sdSPI, 4000000);
+  if (!card) {                                         // the in-line wiring
+    SD.end(); sdSPI.end();
+    sdSPI.begin(SD_SCK, SD_MISO, SD_MOSI_INLINE, SD_CS_INLINE);
+    for (int pin : {SD_MISO, SD_MOSI_INLINE, SD_CS_INLINE}) gpio_pullup_en((gpio_num_t)pin);
+    card = SD.begin(SD_CS_INLINE, sdSPI, 10000000) || SD.begin(SD_CS_INLINE, sdSPI, 4000000);
+  }
+  if (!card) { Serial.println("loader: no card"); startShelf(); }
   File f = SD.open(UPDATE_FILE, FILE_READ);
   if (!f) { Serial.println("loader: nothing to install"); startShelf(); }
   size_t size = f.size();
@@ -50,6 +66,7 @@ void setup() {
     int n = f.read(buf, std::min(sizeof buf, size - done));
     if (n <= 0 || Update.write(buf, n) != (size_t)n) { ok = false; break; }
     done += n;
+    digitalWrite(LED_PIN, (millis() / 70) % 2);
     if ((done & 0x3FFFF) < sizeof buf) Serial.printf("loader: %u%%\n", (unsigned)(done * 100 / size));
   }
   f.close();

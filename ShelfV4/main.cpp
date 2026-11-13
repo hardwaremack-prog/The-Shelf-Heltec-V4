@@ -621,6 +621,7 @@ void setup() {
   fsLock = xSemaphoreCreateRecursiveMutex();
   powerOLED();
   oledMsg("THE SHELF", BOARD_NAME, "Starting...");
+  ledBegin();
 
   prefs.begin("shelf", false);
   uint64_t mac = ESP.getEfuseMac();
@@ -656,6 +657,7 @@ void setup() {
 
   setupServer(server80);
   setupServer(server8080);
+  ledWebUp();
   btBegin();                  // plain ESP32: hands Bluetooth's unused memory to the web server
   messagingBegin();
   comsBegin();
