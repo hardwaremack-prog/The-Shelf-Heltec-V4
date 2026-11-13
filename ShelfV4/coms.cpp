@@ -179,7 +179,12 @@ static void nowSend(const uint8_t* b, size_t len) {
     memcpy(peer.peer_addr, BCAST, 6); peer.channel = 0; peer.encrypt = false; peer.ifidx = nowIf = want;
     esp_now_mod_peer(&peer);
   }
+  // A broadcast frame gets no acknowledgement and no retry, so one lost to a busy channel is
+  // simply gone. Every packet goes out twice, a moment apart; boards drop the copy they've
+  // already seen (by its id), so it costs nothing but a little air time.
   if (esp_now_send(BCAST, b, len) == ESP_OK) nowSentCount++;
+  vTaskDelay(pdMS_TO_TICKS(60 + esp_random() % 90));
+  esp_now_send(BCAST, b, len);
 }
 static uint8_t wifiChannel() { uint8_t ch = 0; wifi_second_chan_t sc; esp_wifi_get_channel(&ch, &sc); return ch; }
 
