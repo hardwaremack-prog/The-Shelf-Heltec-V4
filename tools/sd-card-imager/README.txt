@@ -15,14 +15,18 @@ Save a card
   2. Leave "Compress" ticked: empty space on the card takes almost nothing,
      so a 32 GB card with 3 GB on it makes an image of roughly 3 GB.
   3. Click "Save card to image..." and choose where to save it.
-  The whole card is read, empty space included, so it takes a while
-  (often 10-30 minutes for 32 GB, depending on the card reader).
+  With "Quick" ticked (the default), a FAT32 card is read only where it holds
+  something: the app reads the card's own map of used space and skips the rest,
+  so a 32 GB card with 3 GB on it takes a few minutes. The image is still a
+  normal full-size card image (empty space is zeros). Untick Quick to read
+  every byte, or for cards that aren't FAT32 (those are always read whole).
 
 Write an image onto a card
   1. Put the new card in and pick it in the Card list. CHECK IT'S THE RIGHT ONE:
      everything on it is replaced.
   2. Click "Write image to card..." and pick the .img or .img.gz file.
   3. When it's done, take the card out and put it back in.
+  With Quick ticked, empty space is skipped on the new card too.
   The new card must be at least as big as the one the image came from.
   (A bigger card works; the extra space just isn't used.)
 

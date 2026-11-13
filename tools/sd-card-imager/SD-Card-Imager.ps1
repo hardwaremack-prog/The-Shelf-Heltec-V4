@@ -51,6 +51,127 @@ public static class RawDisk {
         DeviceIoControl(h, FSCTL_DISMOUNT_VOLUME, IntPtr.Zero, 0, IntPtr.Zero, 0, out r, IntPtr.Zero);
         return h;
     }
+
+    // An uncompressed image file that skips empty space on disk (NTFS sparse file)
+    public static void SetSparse(FileStream f) {
+        uint r;
+        DeviceIoControl(f.SafeFileHandle, 0x000900C4, IntPtr.Zero, 0, IntPtr.Zero, 0, out r, IntPtr.Zero);   // FSCTL_SET_SPARSE
+    }
+}
+
+// Which parts of a FAT32 card hold anything. Everything up to the end of the FAT tables is
+// always copied; after that, only clusters the FAT marks as used. Empty clusters are left out
+// (zeros in the image, skipped on the card). Anything that isn't plain FAT32 is copied whole.
+public class FatMap {
+    public long PartStart, PartEnd, FatStart, DataStart;
+    public int ClusterSize;
+    public long ClusterCount;
+    public bool OtherPartitions;
+    uint[] fat;
+
+    static uint U32(byte[] b, long o) { return (uint)(b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)); }
+    static int U16(byte[] b, long o) { return b[o] | (b[o + 1] << 8); }
+    static bool IsFat32Boot(byte[] b, long o, long len) {
+        if (o + 512 > len) return false;
+        if (b[o + 510] != 0x55 || b[o + 511] != 0xAA) return false;
+        return b[o + 82] == (byte)'F' && b[o + 83] == (byte)'A' && b[o + 84] == (byte)'T' && b[o + 85] == (byte)'3' && b[o + 86] == (byte)'2';
+    }
+
+    // How many bytes from the start of the card are needed to read the map: -1 = not FAT32 (copy
+    // everything); a number bigger than len = read that much first; otherwise the map is ready.
+    public static long BytesNeeded(byte[] b, long len, out long part, out bool others) {
+        part = -1; others = false;
+        if (len < 512) return 512;
+        if (b[510] != 0x55 || b[511] != 0xAA) return -1;
+        if (IsFat32Boot(b, 0, len)) part = 0;                        // no partition table
+        else {
+            for (int i = 0; i < 4; i++) {
+                long e = 446 + 16 * i;
+                byte type = b[e + 4];
+                if (type == 0) continue;
+                if (part < 0 && (type == 0x0B || type == 0x0C)) part = (long)U32(b, e + 8) * 512;
+                else others = true;
+            }
+            if (part < 0) return -1;
+        }
+        if (len < part + 512) return part + 512;
+        if (!IsFat32Boot(b, part, len)) return -1;
+        int bps = U16(b, part + 11), spc = b[part + 13], rsvd = U16(b, part + 14), nf = b[part + 16];
+        uint fatsz = U32(b, part + 36);
+        if (bps < 512 || bps > 4096 || spc == 0 || nf == 0 || fatsz == 0) return -1;
+        return part + ((long)rsvd + (long)nf * fatsz) * bps;
+    }
+
+    public static FatMap Build(byte[] b, long len) {
+        long part; bool others;
+        long need = BytesNeeded(b, len, out part, out others);
+        if (need < 0 || need > len) return null;
+        FatMap m = new FatMap();
+        int bps = U16(b, part + 11), spc = b[part + 13], rsvd = U16(b, part + 14), nf = b[part + 16];
+        uint fatsz = U32(b, part + 36), tot = U32(b, part + 32);
+        m.PartStart = part; m.OtherPartitions = others;
+        m.PartEnd = part + (long)tot * bps;
+        m.FatStart = part + (long)rsvd * bps;
+        m.DataStart = need;
+        m.ClusterSize = bps * spc;
+        m.ClusterCount = ((long)tot - rsvd - (long)nf * fatsz) / spc;
+        long entries = Math.Min((long)fatsz * bps / 4, m.ClusterCount + 2);
+        m.fat = new uint[entries];
+        for (long i = 0; i < entries; i++) m.fat[i] = U32(b, m.FatStart + i * 4) & 0x0FFFFFFF;
+        return m;
+    }
+
+    // Reads the map straight from a card (from its first bytes); null if it isn't FAT32.
+    public static FatMap Probe(Stream s, long size) {
+        byte[] b = new byte[1 << 20]; long len = 0;
+        for (;;) {
+            long part; bool others;
+            long need = BytesNeeded(b, len, out part, out others);
+            if (need < 0 || need > size || need > (1L << 30)) return null;
+            if (need <= len) return Build(b, len);
+            long want = (need + 4095) & ~4095L;
+            if (want > b.Length) { byte[] nb = new byte[Math.Max(want, (long)b.Length * 2)]; Array.Copy(b, nb, len); b = nb; }
+            s.Seek(len, SeekOrigin.Begin);
+            while (len < want) { int n = s.Read(b, (int)len, (int)(want - len)); if (n <= 0) return null; len += n; }
+        }
+    }
+
+    public long UsedBytes() {
+        long used = 0;
+        for (long c = 2; c < fat.Length; c++) if (fat[c] != 0) used += ClusterSize;
+        return used + DataStart;
+    }
+
+    // Does this stretch of the card hold anything?
+    public bool Needed(long off, long len) {
+        long end = off + len;
+        if (off < DataStart) return true;
+        if (off >= PartEnd) return OtherPartitions;                  // past the partition
+        if (end > PartEnd && OtherPartitions) return true;
+        long last = Math.Min(end, PartEnd) - 1;
+        long c0 = 2 + (off - DataStart) / ClusterSize, c1 = 2 + (last - DataStart) / ClusterSize;
+        for (long c = c0; c <= c1; c++) {
+            if (c >= fat.Length) break;                              // slack after the last cluster
+            if (fat[c] != 0) return true;
+        }
+        return false;
+    }
+}
+
+// The start of an image as it streams past, until there's enough to read its map.
+public class HeadCollector {
+    MemoryStream ms = new MemoryStream();
+    public FatMap Map;
+    public bool Done;
+    public void Add(byte[] b, int n) {
+        if (Done) return;
+        ms.Write(b, 0, n);
+        byte[] buf = ms.GetBuffer(); long len = ms.Length;
+        long part; bool others;
+        long need = FatMap.BytesNeeded(buf, len, out part, out others);
+        if (need < 0 || len > (1L << 30)) { Done = true; ms = null; return; }
+        if (need <= len) { Map = FatMap.Build(buf, len); Done = true; ms = null; }
+    }
 }
 '@
 
@@ -132,6 +253,11 @@ $compress.Text = 'Compress the image (.img.gz: much smaller, empty space takes a
 $compress.Checked = $true; $compress.Location = New-Object Drawing.Point(16, 88); $compress.AutoSize = $true
 $form.Controls.Add($compress)
 
+$quick = New-Object Windows.Forms.CheckBox
+$quick.Text = 'Quick: only the parts in use (FAT32 cards)'
+$quick.Checked = $true; $quick.Location = New-Object Drawing.Point(180, 266); $quick.AutoSize = $true
+$form.Controls.Add($quick)
+
 $showAll = New-Object Windows.Forms.CheckBox
 $showAll.Text = 'Show all drives'
 $showAll.Location = New-Object Drawing.Point(16, 266); $showAll.AutoSize = $true
@@ -172,7 +298,7 @@ function Load-Cards {
 
 function Set-Busy([bool]$on) {
     $script:busy = $on
-    $saveBtn.Enabled = -not $on; $writeBtn.Enabled = -not $on; $refresh.Enabled = -not $on; $combo.Enabled = -not $on; $compress.Enabled = -not $on; $showAll.Enabled = -not $on
+    $saveBtn.Enabled = -not $on; $writeBtn.Enabled = -not $on; $refresh.Enabled = -not $on; $combo.Enabled = -not $on; $compress.Enabled = -not $on; $showAll.Enabled = -not $on; $quick.Enabled = -not $on
     $cancelBtn.Enabled = $on
 }
 
@@ -226,19 +352,36 @@ $saveBtn.Add_Click({
     $sw = [Diagnostics.Stopwatch]::StartNew()
     try {
         $disk = [RawDisk]::OpenDisk($card.Number, $false)
+        $map = $null
+        if ($quick.Checked) {
+            $status.Text = 'Reading the card''s map of used space...'; [Windows.Forms.Application]::DoEvents()
+            $map = [FatMap]::Probe($disk, [int64]$card.Size)
+            [void]$disk.Seek(0, 'Begin')
+        }
         $out = [IO.File]::Create($outPath)
         $dest = $out
         if ($compress.Checked) { $gz = New-Object IO.Compression.GZipStream($out, [IO.Compression.CompressionLevel]::Fastest); $dest = $gz }
+        else { [RawDisk]::SetSparse($out) }
         $buf = New-Object byte[] $CHUNK
+        $zero = New-Object byte[] $CHUNK
         [int64]$done = 0
-        while ($done -lt $card.Size -and -not $script:stop) {
+        $verb = if ($map) { "Saving (only the $(Format-Size $map.UsedBytes()) in use)" } else { 'Saving' }
+        while ($done -lt [int64]$card.Size -and -not $script:stop) {
             $want = [int][Math]::Min([int64]$CHUNK, [int64]$card.Size - $done)   # (both as 64-bit: card sizes don't fit 32)
-            $n = Read-Full $disk $buf $want
-            if ($n -le 0) { throw "The card stopped answering after $(Format-Size $done)." }
-            $dest.Write($buf, 0, $n)
+            if ($map -and -not $map.Needed($done, $want)) {
+                # empty space: nothing to read; zeros in the image (a hole in an uncompressed one)
+                [void]$disk.Seek($want, 'Current')
+                if ($gz) { $gz.Write($zero, 0, $want) } else { [void]$out.Seek($want, 'Current') }
+                $n = $want
+            } else {
+                $n = Read-Full $disk $buf $want
+                if ($n -le 0) { throw "The card stopped answering after $(Format-Size $done)." }
+                $dest.Write($buf, 0, $n)
+            }
             $done += $n
-            Show-Progress $done $card.Size $sw 'Saving'
+            Show-Progress $done ([int64]$card.Size) $sw $verb
         }
+        if (-not $gz) { $out.SetLength([int64]$card.Size) }
         $ok = -not $script:stop
     } catch {
         [void][Windows.Forms.MessageBox]::Show("Saving stopped: $($_.Exception.Message)", 'SD Card Imager')
@@ -292,13 +435,21 @@ $writeBtn.Add_Click({
         $buf = New-Object byte[] $CHUNK
         [int64]$done = 0
         $total = if ($zipped) { $card.Size } else { $fileSize }
+        $head = New-Object HeadCollector
+        if (-not $quick.Checked) { $head.Done = $true }
         while (-not $script:stop) {
             $n = Read-Full $src $buf $CHUNK
             if ($n -le 0) { break }
-            if ($done + $n -gt [int64]$card.Size) { throw "The image is bigger than this card; it doesn't fit." }
             $pad = ($n % 512)
             if ($pad) { [Array]::Clear($buf, $n, 512 - $pad); $n += 512 - $pad }   # cards take whole sectors
-            $disk.Write($buf, 0, $n)
+            $head.Add($buf, $n)
+            if ($head.Map -and -not $head.Map.Needed($done, $n)) {
+                # empty space in the image: skip it on the card too
+                if ($done + $n -le [int64]$card.Size) { [void]$disk.Seek($n, 'Current') }
+            } else {
+                if ($done + $n -gt [int64]$card.Size) { throw "The image is bigger than this card; it doesn't fit." }
+                $disk.Write($buf, 0, $n)
+            }
             $done += $n
             Show-Progress ($(if ($zipped) { $in.Position } else { $done })) ($(if ($zipped) { $fileSize } else { $total })) $sw 'Writing'
         }
