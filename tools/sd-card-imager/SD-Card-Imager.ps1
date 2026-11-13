@@ -177,7 +177,7 @@ function Set-Busy([bool]$on) {
 }
 
 function Show-Progress([int64]$done, [int64]$total, $sw, [string]$verb) {
-    $bar.Value = [Math]::Min(1000, [int](1000.0 * $done / [Math]::Max(1, $total)))
+    $bar.Value = [Math]::Min(1000, [int](1000.0 * $done / [Math]::Max([double]1, [double]$total)))
     $secs = [Math]::Max(0.1, $sw.Elapsed.TotalSeconds)
     $speed = $done / $secs
     $left = if ($speed -gt 0) { ($total - $done) / $speed } else { 0 }
@@ -232,7 +232,7 @@ $saveBtn.Add_Click({
         $buf = New-Object byte[] $CHUNK
         [int64]$done = 0
         while ($done -lt $card.Size -and -not $script:stop) {
-            $want = [int][Math]::Min($CHUNK, $card.Size - $done)
+            $want = [int][Math]::Min([int64]$CHUNK, [int64]$card.Size - $done)   # (both as 64-bit: card sizes don't fit 32)
             $n = Read-Full $disk $buf $want
             if ($n -le 0) { throw "The card stopped answering after $(Format-Size $done)." }
             $dest.Write($buf, 0, $n)
@@ -295,7 +295,7 @@ $writeBtn.Add_Click({
         while (-not $script:stop) {
             $n = Read-Full $src $buf $CHUNK
             if ($n -le 0) { break }
-            if ($done + $n -gt $card.Size) { throw "The image is bigger than this card; it doesn't fit." }
+            if ($done + $n -gt [int64]$card.Size) { throw "The image is bigger than this card; it doesn't fit." }
             $pad = ($n % 512)
             if ($pad) { [Array]::Clear($buf, $n, 512 - $pad); $n += 512 - $pad }   # cards take whole sectors
             $disk.Write($buf, 0, $n)
