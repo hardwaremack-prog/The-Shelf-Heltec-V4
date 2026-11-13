@@ -92,7 +92,7 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
         <span slot="unsupported" class="muted">Open this page in Chrome or Edge to install.</span>
         <span slot="not-allowed" class="muted">This page has to be opened over https.</span>
       </esp-web-install-button>
-      <small>An ESP32-WROOM dev board with 4 MB of flash (NodeMCU-32S, ESP32-DevKitC and the like). The whole Shelf, with <b>2.4GHz Mesh Coms</b> in place of 900MHz (no LoRa radio). Starts its own Wi-Fi <b>TheShelf32c</b> (password <code>theshelf</code>) at <b>http://10.1.1.250</b>. Needs a microSD card. If the port doesn't connect, hold BOOT while you click Connect.</small>
+      <small>An ESP32-WROOM dev board with 4 MB of flash (NodeMCU-32S, ESP32-DevKitC and the like). The whole Shelf, with <b>2.4GHz Mesh Coms</b> in place of 900MHz (no LoRa radio). Starts its own Wi-Fi <b>shelf-esp32-xxxx</b>, named after the board (password <code>theshelf</code>) at <b>http://10.1.1.250</b>. Needs a microSD card. If the port doesn't connect, hold BOOT while you click Connect.</small>
     </div>
   </div>
   <p class="muted" style="margin-top:10px">Not sure which you have? Install the standard V4 one. The board's settings page shows how much PSRAM it found; if it lists none, reinstall with the R8 button.</p>
@@ -128,7 +128,7 @@ ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
 
   <h2>3. Connect it to your Wi-Fi</h2>
   <ol>
-    <li>Power the board. The screen shows <b>Join The-Shelf-XXXX</b>. (A plain ESP32 skips setup: it makes its own Wi-Fi <b>TheShelf32c</b>, password <code>theshelf</code>. Join it and open <code>http://10.1.1.250</code>. Joining your home Wi-Fi is optional, from its settings page.)</li>
+    <li>Power the board. The screen shows <b>Join shelf-v4-xxxx</b> (every board's own Wi-Fi has the board's name). (A plain ESP32 skips setup: it makes its own Wi-Fi <b>shelf-esp32-xxxx</b>, password <code>theshelf</code>. Join it and open <code>http://10.1.1.250</code>. Joining your home Wi-Fi is optional, from its settings page.)</li>
     <li>Join that Wi-Fi on your phone. The password is <code>theshelf</code>. The setup page opens; if it doesn't, go to <code>http://192.168.4.1</code>.</li>
     <li>Tap <b>Find networks</b>, pick your home Wi-Fi and type its password. The board restarts.</li>
     <li>Back on your home Wi-Fi, open the address on the board's screen, or <code>http://shelf-v4-xxxx.local</code> (<code>shelf-v3-xxxx.local</code> on a V3, <code>shelf-esp32-xxxx.local</code> on a plain ESP32).</li>

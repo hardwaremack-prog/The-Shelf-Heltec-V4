@@ -104,8 +104,8 @@ label.l{font-size:13px;color:var(--muted)}
     <p class="tip">The board makes its own Wi-Fi network, so The Shelf works anywhere: in the car, at camp, or where there's no Wi-Fi. Join it, then open <b>http://192.168.4.1</b>. Your phone will say <b>"No Internet Connection"</b>: that's on purpose. It stays joined for The Shelf and keeps using cellular data for texts, iMessage and everything else.</p>
     <div style="height:6px"></div>
     <div class="stack">
-      <label class="l" for="apSsid">Network name</label>
-      <input id="apSsid" maxlength="32" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <label class="l" for="apSsid">Network name (the board's name: rename the board below to change it)</label>
+      <input id="apSsid" maxlength="32" readonly title="Named after the board: change the board's name below to rename it" style="opacity:.75">
       <label class="l" for="apPass">Password (8+ characters, or blank for an open network)</label>
       <input id="apPass" maxlength="63" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="leave blank for an open network">
     </div>
@@ -154,7 +154,7 @@ function showTab(t){tabPicked=true;$('#pHome').style.display=t==='home'?'block':
 async function useOwn(){const ssid=$('#apSsid').value.trim(),pass=$('#apPass').value;
   if(pass&&pass.length<8){$('#wMsg').textContent='The password needs at least 8 characters, or leave it blank.';return}
   if(!pass&&!confirm('No password means anyone nearby can join and see The Shelf. Use an open network?'))return;
-  try{await post('/api/board/hotspot',{ssid,pass});$('#wMsg').innerHTML=`Switching to its own Wi-Fi… Join <b>${esc(ssid)}</b>${pass?' with your password':''}, then open <b>http://192.168.4.1</b>.`}catch(e){$('#wMsg').textContent=e.message}}
+  try{await post('/api/board/hotspot',{pass});$('#wMsg').innerHTML=`Switching to its own Wi-Fi… Join <b>${esc(ssid)}</b>${pass?' with your password':''}, then open <b>http://192.168.4.1</b>.`}catch(e){$('#wMsg').textContent=e.message}}
 async function useHome(){try{await post('/api/board/home');$('#wMsg').textContent='Switching back to '+I.homeSsid+'… Rejoin it on your phone, then open http://'+I.host+'.local.'}catch(e){$('#wMsg').textContent=e.message}}
 let A={};
 async function loadAdmin(){try{A=await fetch('/api/admin/status').then(r=>r.json())}catch(e){return}

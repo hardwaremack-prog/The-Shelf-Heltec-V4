@@ -373,11 +373,9 @@ bool handleBoardApi(AsyncWebServerRequest* r, const String& url, WebRequestMetho
   }
   if (url == "/api/board/wifi/forget") { prefs.remove("ssid"); prefs.remove("pass"); prefs.remove("mode"); sendJson(r, 200, "{\"ok\":true}"); rebootSoon = true; return true; }
   if (url == "/api/board/hotspot") {          // run on the board's own Wi-Fi
-    String ss = b["ssid"] | ""; ss.trim();
-    String pw = b["pass"] | "";
-    if (ss.length() < 1 || ss.length() > 32) { sendErr(r, 400, "The network name needs 1 to 32 characters."); return true; }
+    String pw = b["pass"] | "";                // (the network's name is the board's name)
     if (pw.length() && (pw.length() < 8 || pw.length() > 63)) { sendErr(r, 400, "The password needs 8 to 63 characters (or leave it blank for an open network)."); return true; }
-    prefs.putString("apssid", ss); prefs.putString("appass", pw); prefs.putString("mode", "hotspot");
+    prefs.putString("appass", pw); prefs.putString("mode", "hotspot");
     sendJson(r, 200, "{\"ok\":true}"); rebootSoon = true; return true;
   }
   if (url == "/api/board/home") {             // back to joining the home Wi-Fi
@@ -559,7 +557,7 @@ static void handleButton() {
       oledMsg("Wi-Fi reset", "Forgetting network...", "Restarting in setup", "mode");
       prefs.remove("ssid"); prefs.remove("pass"); prefs.remove("mode");
 #if defined(SHELF_ESP32)
-      prefs.remove("apssid"); prefs.remove("appass");   // no screen: back to TheShelf32c / theshelf, so you can always get in
+      prefs.remove("apssid"); prefs.remove("appass");   // no screen: back to the default password theshelf, so you can always get in
 #endif
       delay(1200); ESP.restart();
     }
@@ -632,7 +630,9 @@ void setup() {
   wifiSSID = prefs.getString("ssid", "");
   wifiPass = prefs.getString("pass", "");
   hotspotMode = prefs.getString("mode", DEFAULT_MODE) == "hotspot";
-  ownSSID = prefs.getString("apssid", strlen(DEFAULT_AP_SSID) ? String(DEFAULT_AP_SSID) : apName);
+  // Its own Wi-Fi is always named after the board (shelf-v4-1a2b, shelf-esp32-b21c, or whatever
+  // it's been renamed to), so every board on the air is its own network.
+  ownSSID = hostName;
   ownPass = prefs.getString("appass", AP_PASS);
   firstSetup = !hotspotMode && !wifiSSID.length();
   adminBegin();

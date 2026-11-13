@@ -101,7 +101,7 @@ if board != "V4":
             t = t.replace("The screen sleeps after 5 minutes. Press the board's PRG button to wake it.",
                           "With a screen added (SSD1306 on GPIO 21/22), it sleeps after 5 minutes; press BOOT to wake it.")
             t = t.replace("Hold PRG for 6 seconds and let go to forget the Wi-Fi and go back to setup mode.",
-                          "Hold BOOT for 6 seconds and let go to forget the home Wi-Fi and go back to its own Wi-Fi, TheShelf32c (password theshelf) at http://10.1.1.250.")
+                          "Hold BOOT for 6 seconds and let go to forget the home Wi-Fi and go back to its own Wi-Fi (named after the board, password theshelf) at http://10.1.1.250.")
             t = t.replace("Hold PRG", "Hold BOOT")
             t = t.replace("http://192.168.4.1", "http://10.1.1.250")   # its own Wi-Fi has a fixed address
             t = t.replace("const BAND_NAME = '900MHz Coms';", "const BAND_NAME = '2.4GHz Mesh Coms';")
