@@ -625,3 +625,45 @@
     } catch (e) { /* no bars for this song; playback and the lock screen are unaffected */ }
   };
 })();
+
+// ---- "Get album art" on a board ----
+// The board can't look art up online the way The Shelf on a computer does (it's often on its own
+// Wi-Fi, with no internet). It shows the art that's saved inside each song, so this button
+// explains that and points to Music Standardizer on the Programs shelf, which adds cover art to
+// the files themselves on a computer.
+(function () {
+  function openArtHelp() {
+    const ov = document.createElement('div');
+    ov.className = 'rm-overlay';
+    ov.innerHTML = `<div class="rm-box rm-small art-help" role="dialog" aria-label="Album art">
+      <div class="rm-head"><h3>Album art</h3><button class="rm-x" data-close aria-label="Close">&times;</button></div>
+      <p class="rm-sub">The board shows the cover art that's saved inside each song. To add art to songs that don't have it:</p>
+      <ol>
+        <li>On your computer, run <b>Music Standardizer</b> from the <b>Programs</b> shelf on your music. It looks up the cover art and saves it into each file.</li>
+        <li>Copy the songs back onto the board's Music shelf (upload them, or copy them onto the microSD card).</li>
+        <li>The board reads the art from them by itself: within a minute or two for uploaded songs, or after a restart for songs copied onto the card.</li>
+      </ol>
+      <p class="rm-sub">Already have art in The Shelf on your computer? <b>Settings</b> &rsaquo; <b>Thumbnails from your computer</b> copies it straight across.</p>
+      <div class="rm-row rm-wrap" id="artLinks"><span class="rm-sub" style="margin:0">Looking for Music Standardizer…</span></div>
+      <div class="rm-row"><button class="coms-btn" data-close>OK</button></div>
+    </div>`;
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    ov.addEventListener('click', e => { if (e.target === ov || e.target.closest('[data-close]')) close(); });
+    fetch('/api/files?category=Programs').then(r => r.json()).then(list => {
+      const hits = list.filter(f => /music.?standardi[sz]er/i.test(f.name));
+      const box = ov.querySelector('#artLinks');
+      box.innerHTML = hits.length
+        ? hits.map(f => `<a class="coms-btn" href="${f.url}" download>Download ${escapeHtml(f.name)}</a>`).join('')
+        : '<span class="rm-sub" style="margin:0">Music Standardizer isn\'t on this board\'s Programs shelf yet.</span>';
+    }).catch(() => { ov.querySelector('#artLinks').innerHTML = ''; });
+  }
+  function hook() {
+    const btn = document.getElementById('fetchArtBtn');
+    if (!btn) return;
+    // capture phase: runs instead of The Shelf's own online lookup
+    btn.addEventListener('click', e => { e.stopImmediatePropagation(); e.preventDefault(); openArtHelp(); }, true);
+    btn.title = 'Where album art comes from, and how to add it';
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hook); else hook();
+})();

@@ -1,7 +1,7 @@
 /* The Shelf for Heltec V4: hide the parts that need The Shelf on a computer. */
 :root { --cat-MIDI: #8E7CF0; }   /* the MIDI shelf */
 #powerToggleRow, #localhostOnlyToggleRow, #authIndicator, .power-toggle-group, #secureModeToggleRow, #openWriteToggleRow,
-#imagineBtn, #standardizeNamesBtn, #fetchArtBtn, #clearArtBtn, #exportListBtn, #removeDuplicatesBtn,
+#imagineBtn, #standardizeNamesBtn, #clearArtBtn, #exportListBtn, #removeDuplicatesBtn,
 .track-edit-tags, .portal-section.backup-section,
 [data-act="vnc"] { display: none !important; }
 
@@ -134,3 +134,8 @@
 .bt-vol { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--text-muted); }
 .bt-vol input { width: 120px; }
 .bt-search { width: 100%; margin-top: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--divider); background: var(--ink-deep, rgba(0,0,0,.2)); color: var(--text); font: inherit; font-size: 16px; }
+
+/* "Get album art" on a board: where art comes from, and the program that adds it */
+.art-help ol { margin: 6px 0 4px 20px; padding: 0; font-size: 14px; line-height: 1.55; }
+.art-help li { margin-bottom: 6px; }
+.art-help a.coms-btn { display: inline-block; text-decoration: none; }
