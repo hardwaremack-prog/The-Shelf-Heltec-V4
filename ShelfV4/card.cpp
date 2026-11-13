@@ -13,16 +13,28 @@
 
 struct TarItem { String path; uint64_t size; uint64_t mtimeMs; };
 
-static void walk(const String& dir, std::vector<TarItem>& out) {
-  std::vector<DirEnt> v;
-  listDir(dir, v);
-  for (auto& e : v) {
-    String p = (dir == "/" ? String("") : dir) + "/" + e.name;
-    if (p == TMP_ROOT || p.startsWith(TMP_ROOT "/")) continue;
-    if (e.dir) walk(p, out);
-    else out.push_back({p, e.size, e.mtimeMs});
+// Walks the whole card one file at a time, holding only the folders it's inside (a few open
+// handles), never a list of every file: a board without PSRAM has no room for that.
+struct CardWalk {
+  std::vector<File> stack;
+  bool started = false;
+  bool next(TarItem& it) {
+    if (!started) { started = true; File root = store->open("/"); if (root && root.isDirectory()) stack.push_back(root); }
+    while (!stack.empty()) {
+      File e = stack.back().openNextFile();
+      if (!e) { stack.back().close(); stack.pop_back(); continue; }
+      String p = e.path();
+      if (!p.startsWith("/")) p = "/" + p;
+      if (p == TMP_ROOT || p.startsWith(TMP_ROOT "/")) { e.close(); continue; }
+      if (e.isDirectory()) { if (stack.size() < 12) stack.push_back(e); else e.close(); continue; }
+      it.path = p; it.size = e.size(); it.mtimeMs = (uint64_t)e.getLastWrite() * 1000ULL;
+      e.close();
+      return true;
+    }
+    return false;
   }
-}
+  ~CardWalk() { for (auto& f : stack) f.close(); }
+};
 
 static uint64_t pad512(uint64_t n) { return (n + 511) & ~(uint64_t)511; }
 static size_t nameLen(const TarItem& it) { return it.path.length() - 1; }      // without the leading '/'
@@ -50,11 +62,10 @@ static void header(uint8_t* h, const char* name, size_t nlen, uint64_t size, uin
 }
 
 struct TarStream {
-  std::vector<TarItem> items;
-  size_t idx = 0;
+  CardWalk walk; TarItem cur;
   uint8_t head[1536]; size_t headLen = 0, headPos = 0;   // long-name entry + header for the current file
   File f; uint64_t dataLeft = 0, padLeft = 0;
-  bool inFile = false;
+  bool inFile = false, done = false;
   size_t trailerLeft = 1024;
 };
 
@@ -75,9 +86,9 @@ static size_t fillTar(TarStream& t, uint8_t* out, size_t maxLen) {
       size_t k = (size_t)std::min<uint64_t>(maxLen - n, t.padLeft);
       memset(out + n, 0, k); t.padLeft -= k; n += k; continue;
     }
-    if (t.inFile) { if (t.f) t.f.close(); t.inFile = false; t.idx++; }
-    if (t.idx < t.items.size()) {                         // start the next file
-      const TarItem& it = t.items[t.idx];
+    if (t.inFile) { if (t.f) t.f.close(); t.inFile = false; }
+    if (!t.done && t.walk.next(t.cur)) {                  // start the next file
+      const TarItem& it = t.cur;
       const char* name = it.path.c_str() + 1; size_t nl = nameLen(it);
       t.headLen = 0; t.headPos = 0;
       if (nl > 100) {
@@ -92,6 +103,7 @@ static size_t fillTar(TarStream& t, uint8_t* out, size_t maxLen) {
       t.dataLeft = it.size; t.padLeft = pad512(it.size) - it.size; t.inFile = true;
       continue;
     }
+    t.done = true;
     if (t.trailerLeft) {                                  // two empty blocks end the archive
       size_t k = std::min(maxLen - n, t.trailerLeft);
       memset(out + n, 0, k); t.trailerLeft -= k; n += k; continue;
@@ -112,31 +124,52 @@ bool handleCardApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod
   if (!url.startsWith("/api/board/card/")) return false;
   if (!onSD) { sendErr(r, 400, "No microSD card is fitted, so there's nothing to back up or restore."); return true; }
 
-  if (url == "/api/board/card/info" || url == "/api/board/card/list") {
-    std::vector<TarItem> items; walk("/", items);
-    if (url.endsWith("/info")) {
-      uint64_t bytes = 0; for (auto& it : items) bytes += it.size;
-      uint64_t tarBytes = 1024; for (auto& it : items) tarBytes += entryBytes(it);
-      sendJson(r, 200, String("{\"files\":") + items.size() + ",\"bytes\":" + String((double)bytes, 0) + ",\"tarBytes\":" + String((double)tarBytes, 0) + "}");
-      return true;
-    }
-    String s; s.reserve(items.size() * 64 + 8); s = "[";
-    for (size_t i = 0; i < items.size(); i++) { if (i) s += ","; s += "[\"" + jsonEsc(items[i].path) + "\"," + String((double)items[i].size, 0) + "]"; }
-    s += "]"; sendBody(r, 200, "application/json", std::move(s));
+  if (url == "/api/board/card/info") {
+    CardWalk w; TarItem it; uint32_t files = 0; uint64_t bytes = 0, tarBytes = 1024;
+    while (w.next(it)) { files++; bytes += it.size; tarBytes += entryBytes(it); }
+    sendJson(r, 200, String("{\"files\":") + files + ",\"bytes\":" + String((double)bytes, 0) + ",\"tarBytes\":" + String((double)tarBytes, 0) + "}");
+    return true;
+  }
+
+  if (url == "/api/board/card/list") {                    // [[path, size], ...], sent as it's walked
+    struct ListWalk { CardWalk w; String pend = "["; size_t pos = 0; bool first = true, end = false; };
+    auto L = std::make_shared<ListWalk>();
+    AsyncWebServerResponse* res = r->beginChunkedResponse("application/json",
+      [L](uint8_t* out, size_t maxLen, size_t) -> size_t {
+        size_t n = 0;
+        while (n < maxLen) {
+          if (L->pos < L->pend.length()) {
+            size_t k = std::min(maxLen - n, L->pend.length() - L->pos);
+            memcpy(out + n, L->pend.c_str() + L->pos, k); L->pos += k; n += k; continue;
+          }
+          if (L->end) break;
+          L->pend = ""; L->pos = 0;
+          TarItem it;
+          if (L->w.next(it)) { L->pend = String(L->first ? "" : ",") + "[\"" + jsonEsc(it.path) + "\"," + String((double)it.size, 0) + "]"; L->first = false; }
+          else { L->pend = "]"; L->end = true; }
+        }
+        return n;
+      });
+    res->addHeader("Cache-Control", "no-store");
+    r->send(res);
     return true;
   }
 
   if (url == "/api/board/card/backup" && m == HTTP_GET) {
+    uint64_t total = 1024;
+    { CardWalk w; TarItem it; while (w.next(it)) total += entryBytes(it); }   // first pass: just the size
     auto t = std::make_shared<TarStream>();
-    walk("/", t->items);
-    uint64_t total = 1024; for (auto& it : t->items) total += entryBytes(it);
-    AsyncWebServerResponse* res = r->beginResponse("application/x-tar", (size_t)total,
-      [t](uint8_t* out, size_t maxLen, size_t) -> size_t { return fillTar(*t, out, maxLen); });
+    auto fill = [t](uint8_t* out, size_t maxLen, size_t) -> size_t { size_t n = fillTar(*t, out, maxLen); return n; };
+    // Over 4 GB the size doesn't fit the web server's length field: send it in chunks instead
+    // (the settings page then takes the size from /info for its progress bar).
+    AsyncWebServerResponse* res = total < 0xFFFFFFF0ULL ? r->beginResponse("application/x-tar", (size_t)total, fill)
+                                                        : r->beginChunkedResponse("application/x-tar", fill);
     char fn[64]; time_t now = time(nullptr); struct tm tmv; gmtime_r(&now, &tmv);
     if (now > 1700000000) strftime(fn, sizeof fn, "attachment; filename=\"shelf-card-%Y-%m-%d.tar\"", &tmv);
     else strlcpy(fn, "attachment; filename=\"shelf-card.tar\"", sizeof fn);
     res->addHeader("Content-Disposition", fn);
     res->addHeader("Cache-Control", "no-store");
+    res->addHeader("X-Tar-Bytes", String((double)total, 0));
     r->send(res);
     return true;
   }

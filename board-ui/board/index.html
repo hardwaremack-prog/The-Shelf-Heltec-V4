@@ -233,7 +233,7 @@ async function cardBackup(){
   busy(true);bar(0);const t0=Date.now();
   try{
     const res=await fetch('/api/board/card/backup');if(!res.ok)throw new Error((await res.json().catch(()=>({}))).error||'The board said no');
-    const total=+res.headers.get('Content-Length')||0;let got=0,last=0;
+    const total=+res.headers.get('Content-Length')||+res.headers.get('X-Tar-Bytes')||0;let got=0,last=0;
     const count=new TransformStream({transform(c,ctl){got+=c.length;const now=Date.now();if(now-last>500){last=now;const sp=got/((now-t0)/1000);bar(total?got/total:0);
       cardMsg('Backing up&hellip; '+fmt(got)+' of '+fmt(total)+' · '+fmt(sp)+'/s'+(total&&sp?' · about '+mins((total-got)/sp)+' left':''))}ctl.enqueue(c)}});
     await res.body.pipeThrough(count).pipeThrough(new CompressionStream('gzip')).pipeTo(await handle.createWritable());
