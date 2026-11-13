@@ -63,16 +63,42 @@ function Format-Time([double]$s) {
     if ($s -lt 60) { '{0:N0} s' -f $s } elseif ($s -lt 3600) { '{0:N0} min' -f ($s / 60) } else { '{0:N1} h' -f ($s / 3600) }
 }
 
-# SD cards and USB drives only, never the disk Windows runs from
+# The kind of connection Windows reports for a disk (it can come back as a word or a number)
+function Bus-Name($d) {
+    $b = "$($d.BusType)"
+    switch ($b) { '7' { 'USB' } '12' { 'SD' } '13' { 'MMC' } '1' { 'SCSI' } '3' { 'ATA' } '11' { 'SATA' } '17' { 'NVMe' } '8' { 'RAID' } default { $b } }
+}
+
+# SD cards and USB drives, never the disk Windows runs from. Card readers built into a computer
+# often report themselves as SCSI or ATA rather than SD, so "removable media" counts too.
+# "Show all drives" lists every disk except Windows' own.
 function Get-Cards {
+    $removable = @{}
+    foreach ($w in @(Get-CimInstance Win32_DiskDrive -ErrorAction SilentlyContinue)) {
+        if ("$($w.MediaType)" -match 'Removable|External' -or "$($w.InterfaceType)" -eq 'USB' -or "$($w.PNPDeviceID)" -match 'SD|MMC|CARD|USBSTOR') { $removable[[int]$w.Index] = $true }
+    }
     $list = @()
-    foreach ($d in (Get-Disk | Where-Object { $_.BusType -in @('SD', 'USB', 'MMC') -and -not $_.IsBoot -and -not $_.IsSystem -and $_.Size -gt 0 -and $_.Size -le 1TB })) {
+    foreach ($d in @(Get-Disk -ErrorAction SilentlyContinue)) {
+        if ($d.IsBoot -or $d.IsSystem -or -not $d.Size -or $d.Size -le 0) { continue }
+        $bus = Bus-Name $d
+        $isCard = ($bus -in @('SD', 'USB', 'MMC')) -or $removable.ContainsKey([int]$d.Number)
+        if (-not $isCard -and -not $showAll.Checked) { continue }
+        if ($d.Size -gt 2TB -and -not $showAll.Checked) { continue }
         $letters = @(Get-Partition -DiskNumber $d.Number -ErrorAction SilentlyContinue | Where-Object { $_.DriveLetter } | ForEach-Object { "$($_.DriveLetter):" })
-        $name = ($d.FriendlyName -replace '\s+', ' ').Trim()
-        $label = "Disk $($d.Number): $name, $(Format-Size $d.Size)" + $(if ($letters.Count) { "  ($($letters -join ' '))" } else { '' })
-        $list += [pscustomobject]@{ Number = $d.Number; Size = [int64]$d.Size; Label = $label; Letters = $letters }
+        $name = ("$($d.FriendlyName)" -replace '\s+', ' ').Trim()
+        $label = "Disk $($d.Number): $name, $(Format-Size $d.Size), $bus" + $(if ($letters.Count) { "  ($($letters -join ' '))" } else { '' })
+        $list += [pscustomobject]@{ Number = [int]$d.Number; Size = [int64]$d.Size; Label = $label; Letters = $letters }
     }
     $list
+}
+
+# What Windows sees, for when no card shows up
+function Disk-Summary {
+    $parts = foreach ($d in @(Get-Disk -ErrorAction SilentlyContinue)) {
+        $tag = if ($d.IsBoot -or $d.IsSystem) { ', Windows' } else { '' }
+        "Disk $($d.Number) $(Bus-Name $d) $(Format-Size $d.Size)$tag"
+    }
+    if ($parts) { $parts -join ' | ' } else { 'no disks at all (is this running as administrator?)' }
 }
 
 # ---- window
@@ -106,6 +132,12 @@ $compress.Text = 'Compress the image (.img.gz: much smaller, empty space takes a
 $compress.Checked = $true; $compress.Location = New-Object Drawing.Point(16, 88); $compress.AutoSize = $true
 $form.Controls.Add($compress)
 
+$showAll = New-Object Windows.Forms.CheckBox
+$showAll.Text = 'Show all drives'
+$showAll.Location = New-Object Drawing.Point(16, 266); $showAll.AutoSize = $true
+$form.Controls.Add($showAll)
+$showAll.Add_CheckedChanged({ Load-Cards })
+
 $saveBtn = New-Object Windows.Forms.Button
 $saveBtn.Text = 'Save card to image...'; $saveBtn.Location = New-Object Drawing.Point(16, 124); $saveBtn.Size = New-Object Drawing.Size(260, 40)
 $form.Controls.Add($saveBtn)
@@ -119,7 +151,7 @@ $bar.Location = New-Object Drawing.Point(16, 180); $bar.Size = New-Object Drawin
 $form.Controls.Add($bar)
 
 $status = New-Object Windows.Forms.Label
-$status.Location = New-Object Drawing.Point(16, 210); $status.Size = New-Object Drawing.Size(528, 44)
+$status.Location = New-Object Drawing.Point(16, 208); $status.Size = New-Object Drawing.Size(528, 58)
 $form.Controls.Add($status)
 
 $cancelBtn = New-Object Windows.Forms.Button
@@ -135,12 +167,12 @@ function Load-Cards {
     $script:cards = @(Get-Cards)
     foreach ($c in $script:cards) { [void]$combo.Items.Add($c.Label) }
     if ($script:cards.Count) { $combo.SelectedIndex = 0; $status.Text = 'Pick the card, then save it or write an image to it.' }
-    else { $status.Text = 'No SD card or USB drive found. Put the card in, wait a moment, then click Refresh.' }
+    else { $status.Text = "No card found. Windows sees: $(Disk-Summary). If the card isn't there, try another reader or slot; if it is, tick 'Show all drives'." }
 }
 
 function Set-Busy([bool]$on) {
     $script:busy = $on
-    $saveBtn.Enabled = -not $on; $writeBtn.Enabled = -not $on; $refresh.Enabled = -not $on; $combo.Enabled = -not $on; $compress.Enabled = -not $on
+    $saveBtn.Enabled = -not $on; $writeBtn.Enabled = -not $on; $refresh.Enabled = -not $on; $combo.Enabled = -not $on; $compress.Enabled = -not $on; $showAll.Enabled = -not $on
     $cancelBtn.Enabled = $on
 }
 
@@ -241,6 +273,7 @@ $writeBtn.Add_Click({
         [void][Windows.Forms.MessageBox]::Show("That image ($(Format-Size $fileSize)) is bigger than this card ($(Format-Size $card.Size)). Use a card at least as big as the one it came from.", 'SD Card Imager'); return
     }
     $msg = "Everything on this card will be replaced by the image:`n`n    $($card.Label)`n`nMake sure it's the right card. Continue?"
+    if ($card.Size -gt 300GB) { $msg = "This drive is big for an SD card:`n`n    $($card.Label)`n`nEverything on it will be replaced. Are you SURE it's the card?" }
     if ([Windows.Forms.MessageBox]::Show($msg, 'SD Card Imager', 'YesNo', 'Warning') -ne 'Yes') { return }
 
     Set-Busy $true; $script:stop = $false
