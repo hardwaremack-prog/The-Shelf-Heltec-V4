@@ -516,6 +516,7 @@ class ShelfHandler : public AsyncWebHandler {
     if (!done) sendErr(r, 404, "Not found");
     } catch (...) {
       // out of memory part-way through (a big list on a board without PSRAM): say so, keep running
+      Serial.printf("[shelf] out of memory answering %s (free %u, largest block %u)\n", url.c_str(), ESP.getFreeHeap(), ESP.getMaxAllocHeap());
       sendErr(r, 503, "The board is short of memory right now. Try again in a moment.");
     }
     cleanup(r);

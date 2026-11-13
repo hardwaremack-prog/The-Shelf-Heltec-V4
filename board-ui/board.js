@@ -667,3 +667,22 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hook); else hook();
 })();
+
+// ---- Busy board: ask again ----
+// A board without PSRAM (a plain ESP32) sometimes answers "short of memory" (503) when several
+// things land at once, such as a phone opening the Music shelf while pictures are loading.
+// Instead of the page sitting there, reading requests are asked for again a moment later.
+(function () {
+  const real = window.fetch.bind(window);
+  window.fetch = async function (input, init) {
+    const method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+    const url = typeof input === 'string' ? input : (input && input.url) || '';
+    let res = await real(input, init);
+    if (method !== 'GET' || !/\/api\//.test(url)) return res;
+    for (let i = 1; res.status === 503 && i <= 5; i++) {
+      await new Promise(r => setTimeout(r, 600 * i + Math.random() * 400));
+      res = await real(input, init);
+    }
+    return res;
+  };
+})();
