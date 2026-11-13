@@ -34,7 +34,7 @@ for src in public.rglob("*"):
 # ---- small, targeted changes to The Shelf's page
 app = (stage / "app.js").read_text(encoding="utf-8")
 before = app
-for key in ("ai", "bigfiles"):
+for key in ("ai", "bigfiles", "mesh"):   # (mesh: the computer's way into Coms; boards have their own tab)
     app = re.sub(r"\n\s*\{ key: '%s',[^\n]*\},?" % key, "", app, count=1)
 if app == before:
     sys.exit("Couldn't find the TOOLS list in app.js -- The Shelf's layout changed; update pack_www.py")
@@ -80,6 +80,8 @@ if '<option value="MIDI">' not in html:
 if '<option value="MIDI">' not in html:
     sys.exit("Couldn't add MIDI to the upload shelf list in index.html")
 label = "ESP32" if board == "ESP32" else f"Heltec {board}"
+html = html.replace('\n<script src="mesh-coms.js"></script>', '', 1)   # the computer's Mesh Coms (boards have Coms)
+(stage / "mesh-coms.js").unlink(missing_ok=True)
 html = html.replace("<title>The Shelf</title>", f"<title>The Shelf · {label}</title>", 1)
 if "board.js" not in html or "board.css" not in html:
     sys.exit("Couldn't add board.js/board.css to index.html")

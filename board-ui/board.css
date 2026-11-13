@@ -3,7 +3,7 @@
 #powerToggleRow, #localhostOnlyToggleRow, #authIndicator, .power-toggle-group, #secureModeToggleRow, #openWriteToggleRow,
 #imagineBtn, #standardizeNamesBtn, #clearArtBtn, #exportListBtn, #removeDuplicatesBtn,
 .track-edit-tags, .portal-section.backup-section,
-[data-act="vnc"] { display: none !important; }
+[data-act="vnc"], #shelfUpdateBox, #sidebarUpdateBtn { display: none !important; }
 
 .board-badge {
   display: flex; align-items: center; gap: 10px; margin: 14px 4px 6px; padding: 10px 12px;
