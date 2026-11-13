@@ -314,6 +314,25 @@ static void stopAP() {
   if (!apActive) return;
   dns.stop(); WiFi.softAPdisconnect(true); WiFi.mode(WIFI_STA); apActive = false;
 }
+// Wi-Fi scan for the settings page, run from loop(): 0 idle, 1 asked for, 2 results ready.
+static volatile int scanState = 0;
+static uint32_t scanAskedAt = 0, scanDoneAt = 0;
+static String scanResult = "[]";
+static void wifiScanTick() {
+  if (scanState != 1) return;
+  if (!(WiFi.getMode() & WIFI_STA)) WiFi.mode(apActive ? WIFI_AP_STA : WIFI_STA);
+  // short stops on each channel, so phones on the board's own Wi-Fi hardly notice
+  int n = WiFi.scanNetworks(false, false, false, 120);
+  String s = "[";
+  for (int i = 0; i < n; i++) {
+    if (i) s += ",";
+    s += "{\"ssid\":\"" + jsonEsc(WiFi.SSID(i)) + "\",\"rssi\":" + WiFi.RSSI(i) + ",\"lock\":" + (WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? 1 : 0) + "}";
+  }
+  WiFi.scanDelete();
+  scanResult = s + "]";
+  Serial.printf("[shelf] Wi-Fi scan: %d networks\n", n < 0 ? 0 : n);
+  scanDoneAt = millis(); scanState = 2;
+}
 static void onJoined() {
   staOK = true;
   Serial.printf("[shelf] joined \"%s\" as %s\n", wifiSSID.c_str(), WiFi.localIP().toString().c_str());
@@ -348,20 +367,15 @@ bool handleBoardApi(AsyncWebServerRequest* r, const String& url, WebRequestMetho
     sendJson(r, 200, s); return true;
   }
   if (url == "/api/board/wifi/scan") {
-    int n = WiFi.scanComplete();
-    if (n == WIFI_SCAN_FAILED) {
-      if (!(WiFi.getMode() & WIFI_STA)) WiFi.mode(apActive ? WIFI_AP_STA : WIFI_STA);
-      WiFi.scanNetworks(true);
-      sendJson(r, 200, "{\"scanning\":true}"); return true;
+    // The scan itself runs in loop() (wifiScanTick): it takes a few seconds, and doing it in
+    // the web server's task stalled every page, including this one's answer.
+    if (scanState == 2 && millis() - scanDoneAt < 30000) {
+      String out = String("{\"scanning\":false,\"nets\":") + scanResult + "}";
+      scanState = 0;                               // the next Find networks looks again
+      sendJson(r, 200, out); return true;
     }
-    if (n == WIFI_SCAN_RUNNING) { sendJson(r, 200, "{\"scanning\":true}"); return true; }
-    String s = "{\"scanning\":false,\"nets\":[";
-    for (int i = 0; i < n; i++) {
-      if (i) s += ",";
-      s += "{\"ssid\":\"" + jsonEsc(WiFi.SSID(i)) + "\",\"rssi\":" + WiFi.RSSI(i) + ",\"lock\":" + (WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? 1 : 0) + "}";
-    }
-    WiFi.scanDelete();
-    sendJson(r, 200, s + "]}"); return true;
+    if (scanState != 1) { scanState = 1; scanAskedAt = millis(); }
+    sendJson(r, 200, "{\"scanning\":true}"); return true;
   }
   if (m != HTTP_POST) { sendErr(r, 405, "Use POST"); return true; }
   JsonDocument b(&psAlloc); parseBody(r, b);
@@ -678,6 +692,7 @@ void loop() {
   if (rebootAt && now > rebootAt) { oledMsg("Restarting..."); delay(200); ESP.restart(); }
 
   handleButton();
+  wifiScanTick();
   static uint32_t lastStats = 0;
   if (statsDirty || now - lastStats > 60000) { refreshStats(); lastStats = now; }
   musicMetaLoop();

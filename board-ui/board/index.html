@@ -122,7 +122,7 @@ label.l{font-size:13px;color:var(--muted)}
 
   <div id="cardSec" style="display:none">
   <h2>Back up the microSD card</h2>
-  <div class="card"><div class="kv"><span>On the card</span><span id="cardInfo">&mdash;</span></div></div>
+  <div class="card"><div class="kv"><span>On the card</span><span id="cardInfo"><a href="#" onclick="loadCard();return false">Count files</a></span></div></div>
   <p class="tip">Saves everything on the card (your shelves, plus notes, docs, drawings, Coms log and play counts) into one compressed file on this computer, and puts a backup back onto a card. It runs over Wi-Fi at about 0.3&ndash;1&nbsp;MB/s, so a few GB takes an hour or two: keep this page open. The board itself (firmware and settings) is backed up from the installer page over USB.</p>
   <div class="btns"><button class="pri" id="cardBackupBtn" onclick="cardBackup()">Back up card</button><button id="cardRestoreBtn" onclick="document.getElementById('restoreFile').click()">Restore from a backup&hellip;</button></div>
   <input type="file" id="restoreFile" accept=".gz,.tgz,.tar" hidden>
@@ -185,7 +185,7 @@ async function thImport(){const f=$('#thFrom').value.trim();if(!f){$('#thMsg').t
 thShow();
 async function post(u,d){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d||{})});let j={};try{j=await r.json()}catch(e){}if(!r.ok)throw new Error(j.error||'Something went wrong');return j}
 async function load(){try{I=await fetch('/api/board/info').then(r=>r.json())}catch(e){return}
-  if(I.storage==='microSD card'&&$('#cardSec').style.display==='none')setTimeout(loadCard,0);
+  if(I.storage==='microSD card')$('#cardSec').style.display='block';
   const up=I.uptime>86400?Math.floor(I.uptime/86400)+'d '+Math.floor(I.uptime%86400/3600)+'h':Math.floor(I.uptime/3600)+'h '+Math.floor(I.uptime%3600/60)+'m';
   const rows=[['Board',I.board+(I.psram?' · '+Math.round(I.psram/1048576)+' MB PSRAM':'')],['Firmware','v'+I.fw],['Storage',I.storage+' · '+fmt(I.total)],['Free',fmt(I.total-I.used)],['Address',I.ip],['Name',I.host+'.local'],['Up for',up]];
   if(I.storage==='microSD card')rows.push(['Card writes',(I.sdFailures?I.sdFailures+' failed · ':'')+(I.sdRetries?I.sdRetries+' needed a retry':'all clean')+' since restart']);
@@ -221,8 +221,8 @@ let cardBusy=false;
 const cardMsg=(t,bad)=>{$('#cardMsg').innerHTML=t;$('#cardMsg').className='msg'+(bad?' err':'')};
 const bar=f=>{$('#cardBarWrap').style.display=f==null?'none':'block';$('#cardBar').style.width=((f||0)*100).toFixed(1)+'%'};
 const mins=s=>s<90?Math.round(s)+' s':s<5400?Math.round(s/60)+' min':(s/3600).toFixed(1)+' h';
-async function loadCard(){if(I.storage!=='microSD card'||cardBusy)return;$('#cardSec').style.display='block';
-  try{const c=await fetch('/api/board/card/info').then(r=>r.json());$('#cardInfo').textContent=c.files+' files · '+fmt(c.bytes)}catch(e){}}
+async function loadCard(){if(I.storage!=='microSD card'||cardBusy)return;$('#cardSec').style.display='block';$('#cardInfo').textContent='Counting…';
+  try{const c=await fetch('/api/board/card/info').then(r=>r.json());$('#cardInfo').textContent=c.files+' files · '+fmt(c.bytes)}catch(e){$('#cardInfo').textContent='Couldn\'t count'}}
 function busy(on){cardBusy=on;$('#cardBackupBtn').disabled=on;$('#cardRestoreBtn').disabled=on;window.onbeforeunload=on?()=>'A card backup or restore is running.':null}
 async function cardBackup(){
   const day=new Date().toISOString().slice(0,10);
@@ -282,7 +282,7 @@ $('#restoreFile').addEventListener('change',async e=>{const file=e.target.files[
   busy(false);load()});
 
 load();loadAdmin();setInterval(()=>{load();loadAdmin()},15000);
-setTimeout(loadCard,800);
+
 </script>
 </body>
 </html>

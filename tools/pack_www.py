@@ -42,7 +42,7 @@ app = re.sub(r",(\s*\];\s*\nconst TOOL_LABELS)", r"\1", app)   # no trailing com
 # add the board's own tab: 900MHz Coms (drawn by board.js). A plain ESP32 has no LoRa radio.
 # (a plain ESP32 has no LoRa radio: its Coms run over 2.4 GHz only, and the tab says so)
 coms_label = "2.4GHz Mesh Coms" if board == "ESP32" else "900MHz Coms"
-app, n1 = re.subn(r"(\n(\s*)\{ key: 'tidysuite',)", r"\n\2{ key: 'coms', label: '" + coms_label + "', color: '#E2725B' },\1", app, count=1)
+app, n1 = re.subn(r"(\n(\s*)\{ key: 'tidysuite',)", r"\n\2{ key: 'coms', label: '" + coms_label + r"', color: '#E2725B' },\1", app, count=1)
 app, n2 = re.subn(r"(else if \(key === 'tidysuite'\) loadTidySuiteView\(\);)", r"\1\n  else if (key === 'coms') window.loadComsView();", app, count=1)
 if not (n1 and n2):
     sys.exit("Couldn't add the 900MHz Coms tab to app.js -- The Shelf's layout changed; update pack_www.py")
@@ -67,6 +67,8 @@ app, nimg = re.subn(r'<img src="(\$\{f\.(?:url|artUrl|thumbUrl)\})"( alt="[^"]*"
 if not nimg:
     print("note: no shelf images found to queue (The Shelf's layout changed?)")
 (stage / "app.js").write_text(app, encoding="utf-8")
+if "\x01" in app or "\x02" in app:
+    sys.exit("app.js picked up a stray control character from a replacement -- check pack_www.py's regexes")
 
 html = (stage / "index.html").read_text(encoding="utf-8")
 html = html.replace('<link rel="stylesheet" href="style.css">',
@@ -112,6 +114,15 @@ try:
 except Exception:
     rev = ""
 (stage / "shelf-version.txt").write_text((rev or "unknown") + "\n")
+
+# ---- every script must at least parse (a broken one leaves the page blank on the board)
+if shutil.which("node"):
+    for js in ("app.js", "board.js", "midi.js"):
+        f = stage / js
+        if f.exists():
+            r = subprocess.run(["node", "--check", str(f)], capture_output=True, text=True)
+            if r.returncode != 0:
+                sys.exit(f"{js} doesn't parse after packing:\n{r.stderr[:800]}")
 
 # ---- gzip everything
 total = 0
