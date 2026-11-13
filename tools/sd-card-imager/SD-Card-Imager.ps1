@@ -225,7 +225,8 @@ function Disk-Summary {
 # ---- window
 $form = New-Object Windows.Forms.Form
 $form.Text = 'SD Card Imager'
-$form.ClientSize = New-Object Drawing.Size(560, 300)
+$form.ClientSize = New-Object Drawing.Size(560, 350)
+$form.AutoScaleDimensions = New-Object Drawing.SizeF(96, 96); $form.AutoScaleMode = 'Dpi'
 $form.FormBorderStyle = 'FixedSingle'; $form.MaximizeBox = $false
 $form.StartPosition = 'CenterScreen'
 $form.Font = New-Object Drawing.Font('Segoe UI', 10)
@@ -255,12 +256,12 @@ $form.Controls.Add($compress)
 
 $quick = New-Object Windows.Forms.CheckBox
 $quick.Text = 'Quick: only the parts in use (FAT32 cards)'
-$quick.Checked = $true; $quick.Location = New-Object Drawing.Point(180, 266); $quick.AutoSize = $true
+$quick.Checked = $true; $quick.Location = New-Object Drawing.Point(16, 272); $quick.AutoSize = $true
 $form.Controls.Add($quick)
 
 $showAll = New-Object Windows.Forms.CheckBox
 $showAll.Text = 'Show all drives'
-$showAll.Location = New-Object Drawing.Point(16, 266); $showAll.AutoSize = $true
+$showAll.Location = New-Object Drawing.Point(16, 300); $showAll.AutoSize = $true
 $form.Controls.Add($showAll)
 $showAll.Add_CheckedChanged({ Load-Cards })
 
@@ -277,22 +278,22 @@ $bar.Location = New-Object Drawing.Point(16, 180); $bar.Size = New-Object Drawin
 $form.Controls.Add($bar)
 
 $status = New-Object Windows.Forms.Label
-$status.Location = New-Object Drawing.Point(16, 208); $status.Size = New-Object Drawing.Size(528, 58)
+$status.Location = New-Object Drawing.Point(16, 208); $status.Size = New-Object Drawing.Size(528, 56)
 $form.Controls.Add($status)
 
 $cancelBtn = New-Object Windows.Forms.Button
-$cancelBtn.Text = 'Stop'; $cancelBtn.Location = New-Object Drawing.Point(452, 258); $cancelBtn.Size = New-Object Drawing.Size(92, 30); $cancelBtn.Enabled = $false
+$cancelBtn.Text = 'Stop'; $cancelBtn.Location = New-Object Drawing.Point(432, 290); $cancelBtn.Size = New-Object Drawing.Size(112, 40); $cancelBtn.Enabled = $false
 $form.Controls.Add($cancelBtn)
 
 $script:cards = @()
 $script:stop = $false
 $script:busy = $false
 
-function Load-Cards {
+function Load-Cards([bool]$keepStatus = $false) {
     $combo.Items.Clear()
     $script:cards = @(Get-Cards)
     foreach ($c in $script:cards) { [void]$combo.Items.Add($c.Label) }
-    if ($script:cards.Count) { $combo.SelectedIndex = 0; $status.Text = 'Pick the card, then save it or write an image to it.' }
+    if ($script:cards.Count) { $combo.SelectedIndex = 0; if (-not $keepStatus) { $status.Text = 'Pick the card, then save it or write an image to it.' } }
     else { $status.Text = "No card found. Windows sees: $(Disk-Summary). If the card isn't there, try another reader or slot; if it is, tick 'Show all drives'." }
 }
 
@@ -392,8 +393,8 @@ $saveBtn.Add_Click({
     }
     if ($ok) {
         $size = (Get-Item $outPath).Length
-        $status.Text = "Saved: $outPath  ($(Format-Size $size), in $(Format-Time $sw.Elapsed.TotalSeconds))"
-        $bar.Value = 1000
+        $status.Text = "Complete. Saved $outPath  ($(Format-Size $size), in $(Format-Time $sw.Elapsed.TotalSeconds))"
+        $bar.Value = 0
     } else {
         Remove-Item $outPath -ErrorAction SilentlyContinue
         $status.Text = 'Stopped. The unfinished image was deleted.'; $bar.Value = 0
@@ -465,13 +466,13 @@ $writeBtn.Add_Click({
     }
     try { Update-Disk -Number $card.Number -ErrorAction SilentlyContinue } catch {}
     if ($ok) {
-        $status.Text = "Written in $(Format-Time $sw.Elapsed.TotalSeconds). Take the card out and put it back in before using it."
-        $bar.Value = 1000
+        $status.Text = "Complete. Written in $(Format-Time $sw.Elapsed.TotalSeconds). Take the card out and put it back in before using it."
+        $bar.Value = 0
     } else {
         $status.Text = 'Stopped part way: the card is incomplete. Write the image again before using it.'; $bar.Value = 0
     }
     Set-Busy $false
-    Load-Cards
+    Load-Cards $true
 })
 
 Load-Cards
